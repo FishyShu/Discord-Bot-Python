@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Twitch Drops — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Twitch Drops Notifications</h1>
+    <p>{{ guild.name }}</p>
+</div>
+
+<form method="POST" class="card card-form">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group">
+        <div class="toggle">
+            <input type="checkbox" name="enabled" id="enabled" {% if cfg.get('enabled') %}checked{% endif %}>
+            <label for="enabled">Enable Twitch Drops notifications</label>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label for="channel_id">Notification Channel</label>
+        <select name="channel_id" id="channel_id">
+            <option value="">— Select Channel —</option>
+            {% for ch in channels %}
+            <option value="{{ ch.id }}" {% if cfg.get('channel_id') == ch.id|string %}selected{% endif %}>#{{ ch.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="mention_role_id">Mention Role (optional)</label>
+        <select name="mention_role_id" id="mention_role_id">
+            <option value="">— None —</option>
+            {% for role in roles %}
+            {% if not role.is_default() %}
+            <option value="{{ role.id }}" {% if cfg.get('mention_role_id') == role.id|string %}selected{% endif %}>@{{ role.name }}</option>
+            {% endif %}
+            {% endfor %}
+        </select>
+        <small>Select a role to ping when announcements are sent.</small>
+    </div>
+
+    <div class="card" style="margin-top:1rem;padding:1rem;">
+        <h3 style="margin-bottom:0.75rem;">Game Filters</h3>
+        {% if game_toggles %}
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Game</th><th>Enabled</th></tr>
+                </thead>
+                <tbody>
+                    {% for game, enabled in game_toggles.items() %}
+                    <tr>
+                        <td>{{ game }}</td>
+                        <td>
+                            <input type="hidden" name="game_names" value="{{ game }}">
+                            <div class="toggle">
+                                <input type="checkbox" name="game_toggle_{{ game }}" id="game_toggle_{{ game }}" {% if enabled %}checked{% endif %}>
+                                <label for="game_toggle_{{ game }}"></label>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <small style="color:var(--text-muted);">If no games are enabled, all games will trigger notifications.</small>
+        {% else %}
+        <p class="td-muted">No active drops found. Games will appear here when the bot discovers active Twitch Drop campaigns.</p>
+        {% endif %}
+    </div>
+
+    <div class="btn-group" style="margin-top:1rem;">
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+    </div>
+</form>
+
+{% if cfg.get('channel_id') %}
+<div class="card card-form mt-2">
+    <h3>Test Notification</h3>
+    <p style="color:var(--text-muted);font-size:0.875rem;margin-bottom:1rem;">
+        Send an example Twitch Drops notification to your configured channel.
+    </p>
+    <form method="POST" action="{{ url_for('twitch_drops.twitch_drops_test', guild_id=guild.id) }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-secondary">Send Test Notification</button>
+    </form>
+</div>
+{% endif %}
+
+{% if active_drops %}
+<div class="card mt-2">
+    <h3>Active Twitch Drops</h3>
+    <div class="table-wrap mt-1">
+        <table>
+            <thead>
+                <tr>
+                    <th>Game</th>
+                    <th>Campaign</th>
+                    <th>Period</th>
+                    <th>Discovered</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for drop in active_drops %}
+                <tr>
+                    <td>{{ drop.game_name }}</td>
+                    <td>
+                        {% if drop.details_url %}
+                        <a href="{{ drop.details_url }}" target="_blank" rel="noopener">{{ drop.drop_name[:50] }}{% if drop.drop_name|length > 50 %}...{% endif %}</a>
+                        {% else %}
+                        {{ drop.drop_name[:50] }}{% if drop.drop_name|length > 50 %}...{% endif %}
+                        {% endif %}
+                    </td>
+                    <td class="td-muted">
+                        {% if drop.start_date and drop.end_date %}
+                        {{ drop.start_date[:10] }} — {{ drop.end_date[:10] }}
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                    <td class="td-muted">{{ drop.discovered_at[:16] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

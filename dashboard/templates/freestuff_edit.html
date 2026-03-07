@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Free Games — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Free Game Notifications</h1>
+    <p>{{ guild.name }}</p>
+</div>
+
+<form method="POST" class="card card-form">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group">
+        <div class="toggle">
+            <input type="checkbox" name="enabled" id="enabled" {% if cfg.get('enabled') %}checked{% endif %}>
+            <label for="enabled">Enable free game notifications</label>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label for="channel_id">Notification Channel</label>
+        <select name="channel_id" id="channel_id">
+            <option value="">— Select Channel —</option>
+            {% for ch in channels %}
+            <option value="{{ ch.id }}" {% if cfg.get('channel_id') == ch.id|string %}selected{% endif %}>#{{ ch.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="mention_role_id">Mention Role (optional)</label>
+        <select name="mention_role_id" id="mention_role_id">
+            <option value="">— None —</option>
+            {% for role in roles %}
+            {% if not role.is_default() %}
+            <option value="{{ role.id }}" {% if cfg.get('mention_role_id') == role.id|string %}selected{% endif %}>@{{ role.name }}</option>
+            {% endif %}
+            {% endfor %}
+        </select>
+        <small>Select a role to ping when announcements are sent.</small>
+    </div>
+
+    <div class="form-group">
+        <label>Platforms</label>
+        <small>Select which platforms to get notifications for.</small>
+        <div style="display:flex;flex-wrap:wrap;gap:1rem;margin-top:0.5rem;">
+            {% for p in ['steam', 'epic', 'gog', 'ubisoft', 'origin', 'humble', 'other'] %}
+            <div class="toggle">
+                <input type="checkbox" name="platform_{{ p }}" id="platform_{{ p }}" {% if p in platforms or not cfg %}checked{% endif %}>
+                <label for="platform_{{ p }}">{{ p|title }}</label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+    </div>
+</form>
+
+<!-- Test notification -->
+{% if cfg.get('channel_id') %}
+<div class="card card-form mt-2">
+    <h3>Test Notifications</h3>
+    <p style="color:var(--text-muted);font-size:0.875rem;margin-bottom:1rem;">
+        Send example free game notifications to your configured channel to preview how they look.
+        Three example embeds will be sent (Epic, Steam, GOG) with realistic sample data.
+    </p>
+    <form method="POST" action="{{ url_for('freestuff.freestuff_test', guild_id=guild.id) }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-secondary">Send Test Notifications</button>
+    </form>
+</div>
+{% endif %}
+
+{% if recent_games %}
+<div class="card mt-2">
+    <h3>Recent Free Games</h3>
+    <div class="table-wrap mt-1">
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Platform</th>
+                    <th>Original Price</th>
+                    <th>Discovered</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for game in recent_games %}
+                <tr>
+                    <td><a href="{{ game.url }}" target="_blank" rel="noopener">{{ game.title[:60] }}{% if game.title|length > 60 %}...{% endif %}</a></td>
+                    <td>{{ game.platform|title }}</td>
+                    <td>{{ game.original_price or '—' }}</td>
+                    <td class="td-muted">{{ game.discovered_at[:16] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

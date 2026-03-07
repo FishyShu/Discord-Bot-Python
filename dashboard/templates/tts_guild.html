@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}TTS — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ guild.name }} — TTS Settings</h1>
+    <p>Configure Text-to-Speech for this server.</p>
+</div>
+
+<form method="POST" action="{{ url_for('tts.tts_save', guild_id=guild.id) }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="card card-form">
+        <div class="form-group toggle">
+            <input type="checkbox" name="tts_enabled" id="tts_enabled"
+                   {% if tts_enabled %}checked{% endif %}>
+            <label for="tts_enabled">Enable TTS</label>
+        </div>
+
+        <div class="form-group">
+            <label for="tts_default_lang">Default Language</label>
+            <select name="tts_default_lang" id="tts_default_lang">
+                {% for code, name in languages %}
+                <option value="{{ code }}" {% if tts_lang == code %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+        <a href="{{ url_for('tts.tts_list') }}" class="btn btn-secondary">Back</a>
+    </div>
+</form>
+{% endblock %}

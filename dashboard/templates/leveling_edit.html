@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Leveling — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ guild.name }} — Leveling</h1>
+    <p>Configure XP settings and role rewards.</p>
+</div>
+
+<form method="POST" action="{{ url_for('leveling.leveling_save', guild_id=guild.id) }}" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="card mb-2">
+        <h3 style="margin-bottom:1rem;">XP Settings</h3>
+
+        <div class="form-group toggle">
+            <input type="checkbox" name="enabled" id="enabled"
+                   {% if cfg.get('enabled') %}checked{% endif %}>
+            <label for="enabled">Enabled</label>
+        </div>
+
+        <div class="form-group">
+            <label for="xp_per_message">XP per Message (base)</label>
+            <input type="number" name="xp_per_message" id="xp_per_message"
+                   value="{{ cfg.get('xp_per_message', 15) }}" min="1" max="1000">
+            <small>Actual XP = base +/- 5 random variance.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="xp_cooldown">Cooldown (seconds)</label>
+            <input type="number" name="xp_cooldown" id="xp_cooldown"
+                   value="{{ cfg.get('xp_cooldown', 60) }}" min="0" max="3600">
+        </div>
+
+        <div class="form-group">
+            <label for="levelup_channel_id">Level-up Notification Channel</label>
+            <select name="levelup_channel_id" id="levelup_channel_id">
+                <option value="">Same channel as message</option>
+                {% for ch in guild.text_channels %}
+                <option value="{{ ch.id }}" {% if cfg.get('levelup_channel_id') == ch.id|string %}selected{% endif %}>
+                    #{{ ch.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="levelup_message">Level-up Message</label>
+            <textarea name="levelup_message" id="levelup_message">{{ cfg.get('levelup_message', 'Congrats {user}, you reached level {level}!') }}</textarea>
+            <small>Placeholders: <code>{user}</code> <code>{level}</code></small>
+        </div>
+
+        <h4 style="margin:1.5rem 0 0.75rem;">Level-Up Image</h4>
+        {% if cfg.get('levelup_image_path') or cfg.get('levelup_image_url') %}
+        <div class="form-group">
+            <small>Current: <strong>{{ cfg.get('levelup_image_path') or cfg.get('levelup_image_url') }}</strong></small>
+            <div class="toggle" style="margin-top:0.5rem;">
+                <input type="checkbox" name="clear_levelup_image" id="clear_levelup_image">
+                <label for="clear_levelup_image">Remove current image</label>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="form-group">
+            <label for="levelup_image_file">Upload Image</label>
+            <input type="file" name="levelup_image_file" id="levelup_image_file" accept="image/*">
+        </div>
+
+        <div class="form-group">
+            <label for="levelup_image_url">Or Image URL</label>
+            <input type="text" name="levelup_image_url" id="levelup_image_url"
+                   value="{{ cfg.get('levelup_image_url', '') }}"
+                   placeholder="https://example.com/image.png">
+            <small>Upload takes priority over URL if both provided.</small>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+    </div>
+</form>
+
+<div class="card mb-2">
+    <h3 style="margin-bottom:1rem;">Role Rewards</h3>
+    {% if rewards %}
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Level</th><th>Role</th><th></th></tr></thead>
+            <tbody>
+                {% for r in rewards %}
+                <tr>
+                    <td>{{ r.level }}</td>
+                    <td>{{ r.role_name }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('leveling.leveling_reward_delete', guild_id=guild.id, reward_id=r.id) }}" class="form-inline">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="td-muted">No role rewards configured.</p>
+    {% endif %}
+
+    <h4 style="margin:1.5rem 0 0.75rem;">Add Role Reward</h4>
+    <form method="POST" action="{{ url_for('leveling.leveling_reward_add', guild_id=guild.id) }}" style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group" style="margin-bottom:0;">
+            <label for="level">Level</label>
+            <input type="number" name="level" id="level" min="1" required style="width:100px;">
+        </div>
+        <div class="form-group" style="margin-bottom:0;flex:1;min-width:200px;">
+            <label for="role_id">Role</label>
+            <select name="role_id" id="role_id">
+                {% for role in guild.roles[1:] | reverse %}
+                <option value="{{ role.id }}">{{ role.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="height:38px;">Add</button>
+    </form>
+</div>
+
+<div class="btn-group">
+    <a href="{{ url_for('leveling.leaderboard', guild_id=guild.id) }}" class="btn btn-success">View Leaderboard</a>
+    <a href="{{ url_for('leveling.xp_log', guild_id=guild.id) }}" class="btn btn-success">View XP Log</a>
+    <a href="{{ url_for('leveling.leveling_list') }}" class="btn btn-secondary">Back</a>
+</div>
+{% endblock %}

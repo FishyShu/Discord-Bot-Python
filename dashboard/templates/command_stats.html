@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Trigger Statistics{% endblock %}
+{% block content %}
+<div class="action-bar">
+    <div class="page-header">
+        <h1>Trigger Statistics</h1>
+        <p>Auto-reply and standalone trigger usage statistics.</p>
+    </div>
+    <a href="{{ url_for('commands.command_list') }}" class="btn btn-secondary">Back to Commands</a>
+</div>
+
+<div class="card">
+    {% if commands %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Trigger Pattern(s)</th>
+                    <th>Hit Count</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cmd in commands %}
+                <tr>
+                    <td><strong>{{ cmd.name }}</strong></td>
+                    <td><span class="badge badge-info">{{ cmd.type }}</span></td>
+                    <td>
+                        {% if cmd.trigger_patterns %}
+                            {% for p in cmd.trigger_patterns | from_json_or_empty %}
+                                <code>{{ p }}</code>{{ ", " if not loop.last }}
+                            {% endfor %}
+                        {% elif cmd.trigger_pattern %}
+                            <code>{{ cmd.trigger_pattern }}</code>
+                        {% else %}
+                            <span class="badge badge-muted">—</span>
+                        {% endif %}
+                        {% if cmd.use_regex %}
+                            <span class="badge badge-warning">regex</span>
+                        {% endif %}
+                    </td>
+                    <td><strong>{{ cmd.usage_count|default(0) }}</strong></td>
+                    <td>
+                        {% if cmd.enabled %}
+                        <span class="badge badge-success">Enabled</span>
+                        {% else %}
+                        <span class="badge badge-danger">Disabled</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ cmd.priority|default(0) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">&#128202;</div>
+        <h3>No Trigger Rules</h3>
+        <p>Create auto-reply or standalone trigger commands to see statistics here.</p>
+        <a href="{{ url_for('commands.command_new') }}" class="btn btn-primary">+ New Command</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

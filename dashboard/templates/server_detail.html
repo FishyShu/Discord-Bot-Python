@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}{{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ guild.name }}</h1>
+    <p>Server ID: {{ guild.id }}</p>
+</div>
+
+<div class="detail-grid">
+    <div class="card">
+        <h3>Server Info</h3>
+        <table>
+            <tr><td class="td-muted">Owner</td><td>{{ guild.owner }}</td></tr>
+            <tr><td class="td-muted">Members</td><td>{{ guild.member_count or 0 }}</td></tr>
+            <tr><td class="td-muted">Text Channels</td><td>{{ guild.text_channels|length }}</td></tr>
+            <tr><td class="td-muted">Voice Channels</td><td>{{ guild.voice_channels|length }}</td></tr>
+            <tr><td class="td-muted">Roles</td><td>{{ guild.roles|length }}</td></tr>
+            <tr>
+                <td class="td-muted">Music Status</td>
+                <td>
+                    {% if guild.voice_client and guild.voice_client.is_playing() %}
+                    <span class="badge badge-success">Playing</span>
+                    {% elif guild.voice_client %}
+                    <span class="badge badge-warning">Connected</span>
+                    {% else %}
+                    <span class="badge badge-danger">Not Connected</span>
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>Now Playing</h3>
+        {% if player and player.current %}
+        <table>
+            <tr><td class="td-muted">Track</td><td>{{ player.current.title }}</td></tr>
+            <tr><td class="td-muted">Duration</td><td>{{ player.current.duration_str }}</td></tr>
+            <tr><td class="td-muted">Requested by</td><td>{{ player.current.requester or 'N/A' }}</td></tr>
+            <tr><td class="td-muted">Volume</td><td>{{ (player.volume * 100)|int }}%</td></tr>
+            <tr><td class="td-muted">Loop</td><td>{{ player.loop_mode.value }}</td></tr>
+            <tr><td class="td-muted">Queue</td><td>{{ player.queue|length }} tracks</td></tr>
+        </table>
+        {% else %}
+        <p class="td-muted" style="padding:1rem 0;">Nothing playing right now.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card" style="margin-top:1.5rem;">
+    <h3 style="margin-bottom:1rem;">Guild Settings</h3>
+    <form method="POST" action="{{ url_for('servers.server_settings', guild_id=guild.id) }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label for="dj_role">DJ Role Name</label>
+            <input type="text" id="dj_role" name="dj_role"
+                   value="{{ guild_settings.get('dj_role', '') }}"
+                   placeholder="e.g. DJ">
+            <small>Role name required to use music commands (leave blank to allow everyone).</small>
+        </div>
+
+        <div class="form-group">
+            <label for="default_volume">Default Volume (%)</label>
+            <input type="number" id="default_volume" name="default_volume" min="1" max="100"
+                   value="{{ guild_settings.get('default_volume', '50') }}">
+        </div>
+
+        <div class="form-group">
+            <label for="command_prefix">Command Prefix</label>
+            <input type="text" id="command_prefix" name="command_prefix"
+                   value="{{ guild_settings.get('command_prefix', '!') }}"
+                   maxlength="5">
+        </div>
+
+        <button type="submit" class="btn btn-primary">Save Guild Settings</button>
+    </form>
+</div>
+
+<div class="stats-grid" style="margin-top:1.5rem;">
+    <a href="{{ url_for('welcome.welcome_edit', guild_id=guild.id) }}" class="grid-link">
+        <div class="card stat-card">
+            {% if welcome_cfg.get('welcome_enabled') or welcome_cfg.get('goodbye_enabled') %}
+            <div class="stat-value" style="font-size:1.5rem;color:var(--success);">Active</div>
+            {% else %}
+            <div class="stat-value" style="font-size:1.5rem;color:var(--text-muted);">Off</div>
+            {% endif %}
+            <div class="stat-label">Welcome/Goodbye</div>
+        </div>
+    </a>
+    <a href="{{ url_for('audit.audit_edit', guild_id=guild.id) }}" class="grid-link">
+        <div class="card stat-card">
+            {% if audit_cfg.get('log_channel_id') %}
+            <div class="stat-value" style="font-size:1.5rem;color:var(--success);">Active</div>
+            {% else %}
+            <div class="stat-value" style="font-size:1.5rem;color:var(--text-muted);">Off</div>
+            {% endif %}
+            <div class="stat-label">Audit Log</div>
+        </div>
+    </a>
+    <a href="{{ url_for('leveling.leveling_edit', guild_id=guild.id) }}" class="grid-link">
+        <div class="card stat-card">
+            {% if xp_cfg.get('enabled') %}
+            <div class="stat-value" style="font-size:1.5rem;color:var(--success);">Active</div>
+            {% else %}
+            <div class="stat-value" style="font-size:1.5rem;color:var(--text-muted);">Off</div>
+            {% endif %}
+            <div class="stat-label">Leveling</div>
+        </div>
+    </a>
+    <a href="{{ url_for('reaction_roles.rr_guild', guild_id=guild.id) }}" class="grid-link">
+        <div class="card stat-card">
+            <div class="stat-value" style="font-size:1.5rem;">{{ rr_count }}</div>
+            <div class="stat-label">Reaction Roles</div>
+        </div>
+    </a>
+</div>
+
+{% if scoped_commands %}
+<div class="card" style="margin-top:1.5rem;">
+    <h3 style="margin-bottom:1rem;">Server Commands</h3>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Name</th><th>Type</th><th>Status</th></tr></thead>
+            <tbody>
+                {% for cmd in scoped_commands %}
+                <tr>
+                    <td>{{ cmd.name }}</td>
+                    <td><span class="badge badge-info">{{ cmd.type }}</span></td>
+                    <td>
+                        {% if cmd.enabled %}
+                        <span class="badge badge-success">Enabled</span>
+                        {% else %}
+                        <span class="badge badge-danger">Disabled</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

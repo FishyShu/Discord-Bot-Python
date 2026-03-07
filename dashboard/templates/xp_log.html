@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}XP Log — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ guild.name }} — XP Log</h1>
+    <p>Recent XP gain events.</p>
+</div>
+
+<div class="card">
+    {% if entries %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>XP Gained</th>
+                    <th>Total XP</th>
+                    <th>Level</th>
+                    <th>Channel</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in entries %}
+                <tr>
+                    <td>{{ e.username }}</td>
+                    <td>+{{ e.xp_gained }}</td>
+                    <td>{{ e.total_xp }}</td>
+                    <td>{{ e.level }}</td>
+                    <td class="td-muted">{{ e.channel_name }}</td>
+                    <td class="td-muted">{{ e.created_at[:19] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if total_pages > 1 %}
+    <div class="btn-group" style="margin-top:1rem;justify-content:center;">
+        {% if page > 1 %}
+        <a href="{{ url_for('leveling.xp_log', guild_id=guild.id, page=page-1) }}" class="btn btn-secondary">Previous</a>
+        {% endif %}
+        <span style="padding:0.5rem 1rem;color:var(--text-muted);">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="{{ url_for('leveling.xp_log', guild_id=guild.id, page=page+1) }}" class="btn btn-secondary">Next</a>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="td-muted">No XP log entries yet.</p>
+    {% endif %}
+</div>
+
+<div class="btn-group" style="margin-top:1rem;">
+    <a href="{{ url_for('leveling.leveling_edit', guild_id=guild.id) }}" class="btn btn-secondary">Back to Leveling</a>
+</div>
+{% endblock %}

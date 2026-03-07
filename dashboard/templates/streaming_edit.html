@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Streams — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Streamer Notifications</h1>
+    <p>{{ guild.name }}</p>
+</div>
+
+<!-- Add streamer form -->
+<div class="card card-form">
+    <h3>Add Streamer</h3>
+    <form method="POST" action="{{ url_for('streaming.streaming_add', guild_id=guild.id) }}" class="mt-1">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label for="streamer_url">Streamer URL</label>
+            <input type="text" name="streamer_url" id="streamer_url" placeholder="https://twitch.tv/username or https://youtube.com/@handle">
+            <small>Supported: twitch.tv/username, youtube.com/channel/ID, youtube.com/@handle</small>
+        </div>
+        <div class="form-group">
+            <label for="channel_id">Notification Channel</label>
+            <select name="channel_id" id="channel_id">
+                <option value="">— Select Channel —</option>
+                {% for ch in channels %}
+                <option value="{{ ch.id }}">#{{ ch.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="mention_role_id">Mention Role (optional)</label>
+            <select name="mention_role_id" id="mention_role_id">
+                <option value="">— None —</option>
+                {% for role in roles %}
+                {% if not role.is_default() %}
+                <option value="{{ role.id }}">@{{ role.name }}</option>
+                {% endif %}
+                {% endfor %}
+            </select>
+            <small>Select a role to ping when this streamer goes live.</small>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Streamer</button>
+    </form>
+</div>
+
+<!-- Test notification -->
+<div class="card card-form mt-2">
+    <h3>Test Notifications</h3>
+    <p style="color:var(--text-muted);font-size:0.875rem;margin-bottom:1rem;">
+        Send example Twitch and YouTube notifications to a channel to preview how they look.
+    </p>
+    <form method="POST" action="{{ url_for('streaming.streaming_test', guild_id=guild.id) }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label for="test_channel_id">Send test to</label>
+            <select name="test_channel_id" id="test_channel_id">
+                <option value="">— Select Channel —</option>
+                {% for ch in channels %}
+                <option value="{{ ch.id }}">#{{ ch.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-secondary">Send Test Notifications</button>
+    </form>
+</div>
+
+<!-- Tracked streamers table -->
+{% if configs %}
+<div class="card mt-2">
+    <h3>Tracked Streamers</h3>
+    <div class="table-wrap mt-1">
+        <table>
+            <thead>
+                <tr>
+                    <th>Streamer</th>
+                    <th>Platform</th>
+                    <th>Channel</th>
+                    <th>Mention Role</th>
+                    <th>Last Notified</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in configs %}
+                <tr>
+                    <td><a href="{{ c.streamer_url }}" target="_blank" rel="noopener">{{ c.streamer_name }}</a></td>
+                    <td>
+                        {% if c.platform == 'twitch' %}
+                        <span class="badge" style="background:rgba(145,70,255,0.15);color:#9146ff;">Twitch</span>
+                        {% else %}
+                        <span class="badge" style="background:rgba(255,0,0,0.15);color:#ff0000;">YouTube</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% set ch = guild.get_channel(c.channel_id|int) %}
+                        {{ '#' + ch.name if ch else 'Unknown' }}
+                    </td>
+                    <td>
+                        <form method="POST" action="{{ url_for('streaming.streaming_update_role', guild_id=guild.id, config_id=c.id) }}" class="form-inline">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                            <select name="mention_role_id" onchange="this.form.submit()" style="min-width:120px;">
+                                <option value="">— None —</option>
+                                {% for role in roles %}
+                                {% if not role.is_default() %}
+                                <option value="{{ role.id }}" {% if c.get('mention_role_id') == role.id|string %}selected{% endif %}>@{{ role.name }}</option>
+                                {% endif %}
+                                {% endfor %}
+                            </select>
+                        </form>
+                    </td>
+                    <td class="td-muted">{{ c.last_notified[:16] if c.last_notified else 'Never' }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('streaming.streaming_remove', guild_id=guild.id, config_id=c.id) }}" class="form-inline">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card mt-2">
+    <div class="empty-state">
+        <div class="empty-icon">&#128250;</div>
+        <h3>No Streamers Tracked</h3>
+        <p>Add a Twitch or YouTube streamer above to get started.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Audit Log</h1>
+    <p>Configure event logging per server.</p>
+</div>
+
+<div class="server-grid">
+    {% for guild in guilds %}
+    <a href="{{ url_for('audit.audit_edit', guild_id=guild.id) }}" class="grid-link">
+        <div class="card server-card">
+            {% if guild.icon %}
+            <img src="{{ guild.icon.url }}" alt="">
+            {% else %}
+            <div class="server-icon-fallback">{{ guild.name[0] }}</div>
+            {% endif %}
+            <div class="server-info">
+                <h3>{{ guild.name }}</h3>
+                <p>
+                    {% set cfg = configs.get(guild.id) %}
+                    {% if cfg and cfg.log_channel_id %}
+                    <span class="badge badge-success">Configured</span>
+                    {% else %}
+                    <span class="badge badge-danger">Not configured</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

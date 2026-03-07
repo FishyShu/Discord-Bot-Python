@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Welcome — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ guild.name }} — Welcome / Goodbye</h1>
+    <p>Placeholders: <code>{user}</code> <code>{username}</code> <code>{server}</code> <code>{membercount}</code></p>
+</div>
+
+<form method="POST" action="{{ url_for('welcome.welcome_save', guild_id=guild.id) }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="card mb-2">
+        <h3 style="margin-bottom:1rem;">Welcome Message</h3>
+
+        <div class="form-group toggle">
+            <input type="checkbox" name="welcome_enabled" id="welcome_enabled"
+                   {% if cfg.get('welcome_enabled') %}checked{% endif %}>
+            <label for="welcome_enabled">Enabled</label>
+        </div>
+
+        <div class="form-group">
+            <label for="welcome_channel_id">Channel</label>
+            <select name="welcome_channel_id" id="welcome_channel_id">
+                <option value="">— select —</option>
+                {% for ch in guild.text_channels %}
+                <option value="{{ ch.id }}" {% if cfg.get('welcome_channel_id') == ch.id|string %}selected{% endif %}>
+                    #{{ ch.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="welcome_message">Text Message</label>
+            <textarea name="welcome_message" id="welcome_message">{{ cfg.get('welcome_message', '') }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="welcome_embed_json">Embed JSON (optional)</label>
+            <textarea name="welcome_embed_json" id="welcome_embed_json" class="textarea-code">{{ cfg.get('welcome_embed_json', '') }}</textarea>
+            <small>Keys: title, description, color (int), footer, thumbnail ("{avatar}" for user avatar)</small>
+        </div>
+    </div>
+
+    <div class="card mb-2">
+        <h3 style="margin-bottom:1rem;">Goodbye Message</h3>
+
+        <div class="form-group toggle">
+            <input type="checkbox" name="goodbye_enabled" id="goodbye_enabled"
+                   {% if cfg.get('goodbye_enabled') %}checked{% endif %}>
+            <label for="goodbye_enabled">Enabled</label>
+        </div>
+
+        <div class="form-group">
+            <label for="goodbye_channel_id">Channel</label>
+            <select name="goodbye_channel_id" id="goodbye_channel_id">
+                <option value="">— select —</option>
+                {% for ch in guild.text_channels %}
+                <option value="{{ ch.id }}" {% if cfg.get('goodbye_channel_id') == ch.id|string %}selected{% endif %}>
+                    #{{ ch.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="goodbye_message">Text Message</label>
+            <textarea name="goodbye_message" id="goodbye_message">{{ cfg.get('goodbye_message', '') }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="goodbye_embed_json">Embed JSON (optional)</label>
+            <textarea name="goodbye_embed_json" id="goodbye_embed_json" class="textarea-code">{{ cfg.get('goodbye_embed_json', '') }}</textarea>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save Settings</button>
+    <a href="{{ url_for('welcome.welcome_list') }}" class="btn btn-secondary">Back</a>
+</form>
+{% endblock %}

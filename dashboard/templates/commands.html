@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Commands{% endblock %}
+{% block content %}
+<div class="action-bar">
+    <div class="page-header">
+        <h1>Custom Commands</h1>
+        <p>Manage custom text, embed, and auto-reply commands.</p>
+    </div>
+    <div class="btn-group">
+        <a href="{{ url_for('commands.command_stats') }}" class="btn btn-secondary">View Stats</a>
+        <a href="{{ url_for('commands.command_new') }}" class="btn btn-primary">+ New Command</a>
+    </div>
+</div>
+
+<div class="card">
+    {% if commands %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Scope</th>
+                    <th>Status</th>
+                    <th>Uses</th>
+                    <th>Features</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cmd in commands %}
+                <tr>
+                    <td><strong>{{ cmd.name }}</strong></td>
+                    <td><span class="badge badge-info">{{ cmd.type }}</span></td>
+                    <td>{{ guild_names.get(cmd.guild_id, 'Global') if cmd.guild_id else 'Global' }}</td>
+                    <td>
+                        {% if cmd.enabled %}
+                        <span class="badge badge-success">Enabled</span>
+                        {% else %}
+                        <span class="badge badge-danger">Disabled</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ cmd.usage_count|default(0) }}</td>
+                    <td>
+                        {% if cmd.cooldown|default(0) %}
+                        <span class="badge badge-warning">{{ cmd.cooldown }}s CD</span>
+                        {% endif %}
+                        {% if cmd.tts|default(0) %}
+                        <span class="badge badge-muted">TTS</span>
+                        {% endif %}
+                        {% if cmd.required_role_id|default('') %}
+                        <span class="badge badge-info">Role Lock</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group">
+                            <a href="{{ url_for('commands.command_edit', cmd_id=cmd.id) }}" class="btn btn-sm btn-primary">Edit</a>
+                            <button class="btn btn-sm btn-danger"
+                                    hx-delete="{{ url_for('commands.command_delete', cmd_id=cmd.id) }}"
+                                    hx-confirm="Delete command '{{ cmd.name }}'?"
+                                    hx-target="closest tr"
+                                    hx-swap="outerHTML">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">&#9000;</div>
+        <h3>No Custom Commands</h3>
+        <p>Create your first command to get started.</p>
+        <a href="{{ url_for('commands.command_new') }}" class="btn btn-primary">+ New Command</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Utility / Reminders{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Utility / Reminders</h1>
+    <p>View and manage reminders per server.</p>
+</div>
+
+<div class="server-grid">
+    {% for guild in guilds %}
+    <a href="{{ url_for('utility.utility_guild', guild_id=guild.id) }}" class="grid-link">
+        <div class="card server-card">
+            {% if guild.icon %}
+            <img src="{{ guild.icon.url }}" alt="">
+            {% else %}
+            <div class="server-icon-fallback">{{ guild.name[0] }}</div>
+            {% endif %}
+            <div class="server-info">
+                <h3>{{ guild.name }}</h3>
+                <p>
+                    {% set count = counts.get(guild.id, 0) %}
+                    <span class="badge {% if count > 0 %}badge-info{% else %}badge-muted{% endif %}">{{ count }} reminder{{ 's' if count != 1 }}</span>
+                </p>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

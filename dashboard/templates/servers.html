@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Servers{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Servers</h1>
+    <p>All guilds the bot is connected to.</p>
+</div>
+
+<div class="server-grid">
+    {% for guild in guilds %}
+    <a href="{{ url_for('servers.server_detail', guild_id=guild.id) }}" class="grid-link">
+        <div class="card server-card">
+            <img src="{{ guild.icon.url if guild.icon else 'https://cdn.discordapp.com/embed/avatars/0.png' }}"
+                 alt="{{ guild.name }}">
+            <div class="server-info">
+                <h3>{{ guild.name }}</h3>
+                <p>{{ guild.member_count or 0 }} members</p>
+                {% if guild.voice_client and guild.voice_client.is_playing() %}
+                <span class="badge badge-success">Playing</span>
+                {% endif %}
+            </div>
+        </div>
+    </a>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">&#127760;</div>
+        <h3>No Servers Found</h3>
+        <p>The bot isn't connected to any servers yet.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Streams{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Streamer Notifications</h1>
+    <p>Get notified when tracked streamers go live on Twitch or upload on YouTube.</p>
+</div>
+
+<div class="server-grid">
+    {% for guild in guilds %}
+    {% set count = streamer_counts.get(guild.id, 0) %}
+    <a href="{{ url_for('streaming.streaming_edit', guild_id=guild.id) }}" class="grid-link">
+        <div class="card server-card">
+            {% if guild.icon %}
+            <img src="{{ guild.icon.url }}" alt="">
+            {% else %}
+            <div class="server-icon-fallback">&#127760;</div>
+            {% endif %}
+            <div class="server-info">
+                <h3>{{ guild.name }}</h3>
+                <p>
+                    {% if count > 0 %}
+                    <span class="badge badge-info">{{ count }} streamer{{ 's' if count != 1 else '' }}</span>
+                    {% else %}
+                    <span class="badge badge-muted">No streamers</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+
+{% if not guilds %}
+<div class="empty-state">
+    <div class="empty-icon">&#128250;</div>
+    <h3>No Servers</h3>
+    <p>The bot isn't in any servers yet.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Music{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Music</h1>
+    <p>View now playing and configure music settings per server.</p>
+</div>
+
+<div class="server-grid">
+    {% for guild in guilds %}
+    <a href="{{ url_for('music.music_guild', guild_id=guild.id) }}" class="grid-link">
+        <div class="card server-card">
+            {% if guild.icon %}
+            <img src="{{ guild.icon.url }}" alt="">
+            {% else %}
+            <div class="server-icon-fallback">{{ guild.name[0] }}</div>
+            {% endif %}
+            <div class="server-info">
+                <h3>{{ guild.name }}</h3>
+                <p>
+                    {% if playing.get(guild.id) %}
+                    <span class="badge badge-success">Playing</span>
+                    {% else %}
+                    <span class="badge badge-muted">Idle</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

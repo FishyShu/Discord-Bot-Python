@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Music — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ guild.name }} — Music</h1>
+    <p>Now playing, queue, and settings.</p>
+</div>
+
+<div class="card mb-2">
+    <h3>Now Playing</h3>
+    {% if current_track %}
+    <div style="display:flex;align-items:center;gap:1rem;margin-top:0.75rem;">
+        {% if current_track.thumbnail %}
+        <img src="{{ current_track.thumbnail }}" alt="" style="width:80px;height:80px;border-radius:6px;object-fit:cover;">
+        {% endif %}
+        <div>
+            <strong>{{ current_track.title }}</strong><br>
+            <span class="td-muted">Duration: {{ current_track.duration_str }}</span><br>
+            <span class="td-muted">Requested by: {{ current_track.requester or 'Unknown' }}</span>
+        </div>
+    </div>
+    {% else %}
+    <p class="td-muted mt-1">Nothing is playing right now.</p>
+    {% endif %}
+</div>
+
+<div class="card mb-2">
+    <h3>Queue</h3>
+    {% if queue %}
+    <div class="table-wrap mt-1">
+        <table>
+            <thead>
+                <tr><th>#</th><th>Title</th><th>Duration</th><th>Requested by</th></tr>
+            </thead>
+            <tbody>
+                {% for track in queue %}
+                <tr>
+                    <td class="td-muted">{{ loop.index }}</td>
+                    <td>{{ track.title }}</td>
+                    <td class="td-muted">{{ track.duration_str }}</td>
+                    <td class="td-muted">{{ track.requester or 'Unknown' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if queue | length >= 25 %}
+    <p class="td-muted mt-1">Showing first 25 tracks.</p>
+    {% endif %}
+    {% else %}
+    <p class="td-muted mt-1">Queue is empty.</p>
+    {% endif %}
+</div>
+
+<form method="POST" action="{{ url_for('music.music_save', guild_id=guild.id) }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="card card-form mb-2">
+        <h3 style="margin-bottom:1rem;">Settings</h3>
+
+        <div class="form-group">
+            <label for="music_default_volume">Default Volume (%)</label>
+            <input type="number" name="music_default_volume" id="music_default_volume"
+                   value="{{ volume }}" min="1" max="100">
+        </div>
+
+        <div class="form-group">
+            <label for="music_max_queue_size">Max Queue Size</label>
+            <input type="number" name="music_max_queue_size" id="music_max_queue_size"
+                   value="{{ max_queue }}" min="1" max="1000">
+        </div>
+
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+        <a href="{{ url_for('music.music_list') }}" class="btn btn-secondary">Back</a>
+    </div>
+</form>
+{% endblock %}

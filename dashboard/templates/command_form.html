@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if command else 'New' }} Command{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ 'Edit' if command else 'New' }} Command</h1>
+</div>
+
+<div class="card card-form">
+    <form method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label for="name">Command Name</label>
+            <input type="text" id="name" name="name" value="{{ command.name if command else '' }}" required
+                   placeholder="e.g. hello">
+            <small>The trigger word (without prefix). Users type <code>!hello</code> to invoke.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="type">Type</label>
+            <select id="type" name="type" onchange="toggleFields(this.value)">
+                <option value="text" {{ 'selected' if not command or command.type == 'text' }}>Text Response</option>
+                <option value="embed" {{ 'selected' if command and command.type == 'embed' }}>Embed Response</option>
+                <option value="auto_reply" {{ 'selected' if command and command.type == 'auto_reply' }}>Auto Reply</option>
+                <option value="contains_link" {{ 'selected' if command and command.type == 'contains_link' }}>Contains Link</option>
+                <option value="contains_file" {{ 'selected' if command and command.type == 'contains_file' }}>Contains File</option>
+                <option value="contains_emoji" {{ 'selected' if command and command.type == 'contains_emoji' }}>Contains Emoji</option>
+                <option value="contains_role_mention" {{ 'selected' if command and command.type == 'contains_role_mention' }}>Contains Role Mention</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="trigger-group" style="{{ '' if command and command.type in ('auto_reply',) else 'display:none' }}">
+            <label for="trigger_pattern">Trigger Pattern</label>
+            <input type="text" id="trigger_pattern" name="trigger_pattern"
+                   value="{{ command.trigger_pattern if command else '' }}"
+                   placeholder="e.g. hello there">
+            <small>Substring or pattern to match in any message (auto-reply only).</small>
+        </div>
+
+        <div class="form-group" id="trigger-patterns-group" style="{{ '' if command and command.type in ('auto_reply',) else 'display:none' }}">
+            <label for="trigger_patterns">Trigger Patterns (Multi)</label>
+            <textarea id="trigger_patterns" name="trigger_patterns"
+                      placeholder="One pattern per line&#10;e.g.&#10;hello&#10;hi there&#10;hey">{% if command and command.trigger_patterns %}{% for p in command.trigger_patterns | from_json_or_empty %}{{ p }}{{ "\n" if not loop.last }}{% endfor %}{% endif %}</textarea>
+            <small>One pattern per line. Any match triggers the rule. Leave empty to use single trigger above.</small>
+        </div>
+
+        <div class="form-group" id="use-regex-group" style="{{ '' if command and command.type in ('auto_reply',) else 'display:none' }}">
+            <div class="toggle">
+                <input type="checkbox" id="use_regex" name="use_regex"
+                       {{ 'checked' if command and command.use_regex }}>
+                <label for="use_regex">Use Regex</label>
+            </div>
+            <small>Enable regex matching for trigger patterns (e.g. <code>\b(hi|hello)\b</code>).</small>
+        </div>
+
+        <div class="form-group" id="reaction-emojis-group" style="{{ '' if command and command.type in ('auto_reply', 'contains_link', 'contains_file', 'contains_emoji', 'contains_role_mention') else 'display:none' }}">
+            <label for="reaction_emojis">Reaction Emojis</label>
+            <input type="text" id="reaction_emojis" name="reaction_emojis"
+                   value="{% if command and command.reaction_emojis %}{{ command.reaction_emojis | from_json_or_empty | join(', ') }}{% endif %}"
+                   placeholder="e.g. 👍, ❤️, <:custom:123456>">
+            <small>Comma-separated emojis to react to the triggering message with.</small>
+        </div>
+
+        <div class="form-group" id="response-image-url-group" style="{{ '' if command and command.type in ('auto_reply', 'text', 'contains_link', 'contains_file', 'contains_emoji', 'contains_role_mention') else 'display:none' }}">
+            <label for="response_image_url">Response Image URL</label>
+            <input type="text" id="response_image_url" name="response_image_url"
+                   value="{{ command.response_image_url if command and command.response_image_url else '' }}"
+                   placeholder="https://example.com/image.png">
+            <small>Image URL to include in an embed with the response (for non-embed types).</small>
+        </div>
+
+        <div class="form-group" id="auto-delete-group" style="{{ '' if command and command.type in ('auto_reply', 'contains_link', 'contains_file', 'contains_emoji', 'contains_role_mention') else 'display:none' }}">
+            <label for="auto_delete_seconds">Auto-delete Response (seconds)</label>
+            <input type="number" id="auto_delete_seconds" name="auto_delete_seconds" min="0"
+                   value="{{ command.auto_delete_seconds if command and command.auto_delete_seconds else 0 }}"
+                   placeholder="0">
+            <small>Auto-delete the bot's response after N seconds. 0 = off.</small>
+        </div>
+
+        <div class="form-group" id="delete-trigger-group" style="{{ '' if command and command.type in ('auto_reply', 'contains_link', 'contains_file', 'contains_emoji', 'contains_role_mention') else 'display:none' }}">
+            <div class="toggle">
+                <input type="checkbox" id="delete_trigger" name="delete_trigger"
+                       {{ 'checked' if command and command.delete_trigger }}>
+                <label for="delete_trigger">Delete Triggering Message</label>
+            </div>
+            <small>Delete the user's message that triggered the rule.</small>
+        </div>
+
+        <div class="form-group" id="mod-action-group" style="{{ '' if command and command.type in ('auto_reply', 'contains_link', 'contains_file', 'contains_emoji', 'contains_role_mention') else 'display:none' }}">
+            <label for="mod_action">Moderation Action</label>
+            <select id="mod_action" name="mod_action" onchange="toggleModValue(this.value)">
+                <option value="" {{ 'selected' if not command or not command.mod_action }}>None</option>
+                <option value="warn" {{ 'selected' if command and command.mod_action == 'warn' }}>Warn (DM)</option>
+                <option value="timeout" {{ 'selected' if command and command.mod_action == 'timeout' }}>Timeout</option>
+                <option value="add_role" {{ 'selected' if command and command.mod_action == 'add_role' }}>Add Role</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="mod-action-value-group" style="{{ '' if command and command.mod_action in ('timeout', 'add_role') else 'display:none' }}">
+            <label for="mod_action_value">Mod Action Value</label>
+            <input type="text" id="mod_action_value" name="mod_action_value"
+                   value="{{ command.mod_action_value if command and command.mod_action_value else '' }}"
+                   placeholder="Timeout: seconds (e.g. 60) / Add Role: role ID">
+            <small>For timeout: duration in seconds. For add_role: the role ID to assign.</small>
+        </div>
+
+        <div class="form-group" id="priority-group" style="{{ '' if command and command.type in ('auto_reply', 'contains_link', 'contains_file', 'contains_emoji', 'contains_role_mention') else 'display:none' }}">
+            <label for="priority">Priority</label>
+            <input type="number" id="priority" name="priority"
+                   value="{{ command.priority if command and command.priority else 0 }}"
+                   placeholder="0">
+            <small>Higher priority rules match first when patterns overlap. Default: 0.</small>
+        </div>
+
+        <div class="form-group" id="response-group">
+            <label for="response_text">Response Text</label>
+            <textarea id="response_text" name="response_text"
+                      placeholder="Bot's response text...">{{ command.response_text if command else '' }}</textarea>
+            <small>Supports variables and random responses (see help below).</small>
+        </div>
+
+        <div class="form-group" id="embed-group" style="{{ '' if command and command.type == 'embed' else 'display:none' }}">
+            <label for="embed_json">Embed JSON</label>
+            <textarea id="embed_json" name="embed_json"
+                      placeholder='{"title": "Hello", "description": "World", "color": 3447003}'>{{ command.embed_json if command else '' }}</textarea>
+            <small>Optional JSON for embed fields: title, description, color, footer, thumbnail, fields[].</small>
+        </div>
+
+        <!-- Additional Filters -->
+        <div class="form-group" id="filters-group" style="{{ '' if command and command.type in ('auto_reply', 'contains_link', 'contains_file', 'contains_emoji', 'contains_role_mention') else 'display:none' }}">
+            <label>Additional Filters</label>
+            <small>Combine these with the trigger type for more precise matching.</small>
+            <div style="display:flex;flex-wrap:wrap;gap:1rem;margin-top:0.5rem;">
+                <div class="toggle">
+                    <input type="checkbox" id="filter_has_link" name="filter_has_link"
+                           {{ 'checked' if command and command.filter_has_link }}>
+                    <label for="filter_has_link">Has Link</label>
+                </div>
+                <div class="toggle">
+                    <input type="checkbox" id="filter_has_file" name="filter_has_file"
+                           {{ 'checked' if command and command.filter_has_file }}>
+                    <label for="filter_has_file">Has File</label>
+                </div>
+                <div class="toggle">
+                    <input type="checkbox" id="filter_has_emoji" name="filter_has_emoji"
+                           {{ 'checked' if command and command.filter_has_emoji }}>
+                    <label for="filter_has_emoji">Has Emoji</label>
+                </div>
+                <div class="toggle">
+                    <input type="checkbox" id="filter_has_role_mention" name="filter_has_role_mention"
+                           {{ 'checked' if command and command.filter_has_role_mention }}>
+                    <label for="filter_has_role_mention">Has Role Mention</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- File Uploads -->
+        <div class="form-group">
+            <label for="attachment_file">Attachment File</label>
+            {% if command and command.attachment_path %}
+            <div style="margin-bottom:0.5rem;">
+                <span class="badge badge-success">Current: {{ command.attachment_path }}</span>
+                <div class="toggle" style="margin-top:0.25rem;">
+                    <input type="checkbox" id="clear_attachment" name="clear_attachment">
+                    <label for="clear_attachment">Remove attachment</label>
+                </div>
+            </div>
+            {% endif %}
+            <input type="file" id="attachment_file" name="attachment_file">
+            <small>Upload a file to attach to the response (png, jpg, gif, webp, txt, pdf — max 8MB).</small>
+        </div>
+
+        <div class="form-group" id="embed-image-group" style="{{ '' if command and command.type == 'embed' else 'display:none' }}">
+            <label for="embed_image_file">Embed Image</label>
+            {% if command and command.embed_image_path %}
+            <div style="margin-bottom:0.5rem;">
+                <span class="badge badge-success">Current: {{ command.embed_image_path }}</span>
+                <div class="toggle" style="margin-top:0.25rem;">
+                    <input type="checkbox" id="clear_embed_image" name="clear_embed_image">
+                    <label for="clear_embed_image">Remove image</label>
+                </div>
+            </div>
+            {% endif %}
+            <input type="file" id="embed_image_file" name="embed_image_file">
+            <small>Image shown in the embed body.</small>
+        </div>
+
+        <div class="form-group" id="embed-thumb-group" style="{{ '' if command and command.type == 'embed' else 'display:none' }}">
+            <label for="embed_thumbnail_file">Embed Thumbnail</label>
+            {% if command and command.embed_thumbnail_path %}
+            <div style="margin-bottom:0.5rem;">
+                <span class="badge badge-success">Current: {{ command.embed_thumbnail_path }}</span>
+                <div class="toggle" style="margin-top:0.25rem;">
+                    <input type="checkbox" id="clear_embed_thumbnail" name="clear_embed_thumbnail">
+                    <label for="clear_embed_thumbnail">Remove thumbnail</label>
+                </div>
+            </div>
+            {% endif %}
+            <input type="file" id="embed_thumbnail_file" name="embed_thumbnail_file">
+            <small>Small thumbnail shown in the embed corner.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="guild_id">Scope</label>
+            <select id="guild_id" name="guild_id">
+                <option value="">Global (all servers)</option>
+                {% for guild in guilds %}
+                <option value="{{ guild.id }}" {{ 'selected' if command and command.guild_id == guild.id|string }}>
+                    {{ guild.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="cooldown">Cooldown (seconds)</label>
+            <input type="number" id="cooldown" name="cooldown" min="0"
+                   value="{{ command.cooldown if command else 0 }}"
+                   placeholder="0">
+            <small>Per-user cooldown in seconds. 0 = no cooldown.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="required_role_id">Required Role ID</label>
+            <input type="text" id="required_role_id" name="required_role_id"
+                   value="{{ command.required_role_id if command and command.required_role_id else '' }}"
+                   placeholder="e.g. 123456789012345678">
+            <small>Only users with this role can trigger the command. Leave blank for everyone.</small>
+        </div>
+
+        <div class="form-group">
+            <div class="toggle">
+                <input type="checkbox" id="enabled" name="enabled"
+                       {{ 'checked' if not command or command.enabled }}>
+                <label for="enabled">Enabled</label>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <div class="toggle">
+                <input type="checkbox" id="tts" name="tts"
+                       {{ 'checked' if command and command.tts }}>
+                <label for="tts">Text-to-Speech (TTS)</label>
+            </div>
+        </div>
+
+        <div class="form-group" id="no-prefix-group" style="{{ '' if not command or command.type in ('text', 'embed') else 'display:none' }}">
+            <div class="toggle">
+                <input type="checkbox" id="no_prefix" name="no_prefix"
+                       {{ 'checked' if command and command.no_prefix }}>
+                <label for="no_prefix">Allow without prefix</label>
+            </div>
+            <small>Users can trigger this command without the <code>!</code> prefix (e.g. just typing <code>hello</code> instead of <code>!hello</code>).</small>
+        </div>
+
+        <div class="btn-group">
+            <button type="submit" class="btn btn-primary">{{ 'Update' if command else 'Create' }} Command</button>
+            <a href="{{ url_for('commands.command_list') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<div class="card card-form mt-2">
+    <h3 style="margin-bottom:0.75rem;">Variables &amp; Random Responses</h3>
+    <div class="help-box">
+        <strong>Variables</strong> — use these placeholders in your response text or embed fields:<br>
+        <code>{user}</code> — mentions the user<br>
+        <code>{username}</code> — the user's display name<br>
+        <code>{server}</code> — server name<br>
+        <code>{channel}</code> — channel name<br>
+        <code>{membercount}</code> — total server members<br>
+        <code>{args}</code> — everything typed after the command<br><br>
+        <strong>Random responses</strong> — separate multiple responses with <code>---</code> on its own line.
+        The bot will pick one at random each time.<br>
+        Example:<br>
+        <code>Hello {user}!</code><br>
+        <code>---</code><br>
+        <code>Hey there, {username}! Welcome to {server}.</code><br><br>
+        <strong>Trigger types</strong><br>
+        <code>contains_link</code> — fires when a message contains a URL<br>
+        <code>contains_file</code> — fires when a message has an attachment<br>
+        <code>contains_emoji</code> — fires when a message has custom or unicode emoji<br>
+        <code>contains_role_mention</code> — fires when a message mentions a role<br>
+        Use <strong>Additional Filters</strong> to combine conditions (e.g. auto_reply with has_link filter).<br><br>
+        <strong>Regex patterns</strong> — enable "Use Regex" for powerful matching:<br>
+        <code>\b(hi|hello|hey)\b</code> — matches whole words "hi", "hello", or "hey"<br>
+        <code>(?i)badword</code> — case-insensitive match (already default)<br>
+        <code>^\!?\w+</code> — matches start of message<br>
+        <code>https?://discord\.gg/\S+</code> — matches Discord invite links<br><br>
+        <strong>Multi-trigger</strong> — add one pattern per line in "Trigger Patterns". Any match fires the rule.<br>
+        <strong>Priority</strong> — higher numbers match first when multiple rules overlap. Default is 0.
+    </div>
+</div>
+
+<script>
+function toggleFields(type) {
+    var isAutoType = ['auto_reply', 'contains_link', 'contains_file', 'contains_emoji', 'contains_role_mention'].indexOf(type) !== -1;
+    var isAutoReply = type === 'auto_reply';
+    var isNonEmbed = type !== 'embed';
+    document.getElementById('trigger-group').style.display = isAutoReply ? '' : 'none';
+    document.getElementById('trigger-patterns-group').style.display = isAutoReply ? '' : 'none';
+    document.getElementById('use-regex-group').style.display = isAutoReply ? '' : 'none';
+    document.getElementById('embed-group').style.display = type === 'embed' ? '' : 'none';
+    document.getElementById('filters-group').style.display = isAutoType ? '' : 'none';
+    document.getElementById('embed-image-group').style.display = type === 'embed' ? '' : 'none';
+    document.getElementById('embed-thumb-group').style.display = type === 'embed' ? '' : 'none';
+    document.getElementById('reaction-emojis-group').style.display = isAutoType ? '' : 'none';
+    document.getElementById('response-image-url-group').style.display = (isAutoType || type === 'text') && isNonEmbed ? '' : 'none';
+    document.getElementById('auto-delete-group').style.display = isAutoType ? '' : 'none';
+    document.getElementById('delete-trigger-group').style.display = isAutoType ? '' : 'none';
+    document.getElementById('mod-action-group').style.display = isAutoType ? '' : 'none';
+    document.getElementById('mod-action-value-group').style.display = isAutoType && ['timeout', 'add_role'].indexOf(document.getElementById('mod_action').value) !== -1 ? '' : 'none';
+    document.getElementById('priority-group').style.display = isAutoType ? '' : 'none';
+    document.getElementById('no-prefix-group').style.display = (type === 'text' || type === 'embed') ? '' : 'none';
+}
+function toggleModValue(value) {
+    document.getElementById('mod-action-value-group').style.display = ['timeout', 'add_role'].indexOf(value) !== -1 ? '' : 'none';
+}
+</script>
+{% endblock %}

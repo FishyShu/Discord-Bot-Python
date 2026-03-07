@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard Overview</h1>
+    <p>Welcome back! Here's your bot at a glance.</p>
+</div>
+
+<!-- Hero Stat Cards -->
+<div class="stats-grid-4">
+    <div class="card stat-card-hero">
+        <div class="stat-icon">&#127760;</div>
+        <div class="stat-value">{{ guild_count }}</div>
+        <div class="stat-label">Servers</div>
+    </div>
+    <div class="card stat-card-hero">
+        <div class="stat-icon">&#128101;</div>
+        <div class="stat-value">{{ member_count }}</div>
+        <div class="stat-label">Members</div>
+    </div>
+    <div class="card stat-card-hero">
+        <div class="stat-icon">&#127925;</div>
+        <div class="stat-value">{{ active_players }}</div>
+        <div class="stat-label">Active Players</div>
+    </div>
+    <div class="card stat-card-hero">
+        <div class="stat-icon">&#9201;</div>
+        <div class="stat-value" style="font-size:1.5rem">{{ uptime }}</div>
+        <div class="stat-label">Uptime</div>
+    </div>
+</div>
+
+<!-- Feature Count Row -->
+<div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
+    <div class="card stat-card">
+        <div class="stat-value">{{ counts.welcome }}</div>
+        <div class="stat-label">Welcome</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value">{{ counts.leveling }}</div>
+        <div class="stat-label">Leveling</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value">{{ counts.reaction_roles }}</div>
+        <div class="stat-label">Reaction Roles</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value">{{ counts.audit }}</div>
+        <div class="stat-label">Audit Logs</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value">{{ counts.autoroles }}</div>
+        <div class="stat-label">Auto-Roles</div>
+    </div>
+</div>
+
+<!-- Two Column: Quick Links + Bot Health -->
+<div class="detail-grid mb-2">
+    <div class="card">
+        <h3>Quick Links</h3>
+        <div class="quick-links-grid mt-1">
+            <a href="{{ url_for('servers.server_list') }}" class="quick-link-item">&#127760; Servers</a>
+            <a href="{{ url_for('commands.command_list') }}" class="quick-link-item">&#9000; Commands</a>
+            <a href="{{ url_for('welcome.welcome_list') }}" class="quick-link-item">&#128075; Welcome</a>
+            <a href="{{ url_for('leveling.leveling_list') }}" class="quick-link-item">&#11088; Leveling</a>
+            <a href="{{ url_for('music.music_list') }}" class="quick-link-item">&#127925; Music</a>
+            <a href="{{ url_for('freestuff.freestuff_list') }}" class="quick-link-item">&#127873; Free Games</a>
+            <a href="{{ url_for('streaming.streaming_list') }}" class="quick-link-item">&#128250; Streams</a>
+        </div>
+    </div>
+    <div class="card">
+        <h3>Bot Health</h3>
+        <table class="mt-1">
+            <tr>
+                <td class="td-muted">Latency</td>
+                <td>
+                    {% if latency_ms < 100 %}
+                    <span class="badge badge-success">{{ latency_ms }}ms</span>
+                    {% elif latency_ms < 250 %}
+                    <span class="badge badge-warning">{{ latency_ms }}ms</span>
+                    {% else %}
+                    <span class="badge badge-danger">{{ latency_ms }}ms</span>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr><td class="td-muted">Python</td><td>{{ python_version }}</td></tr>
+            <tr><td class="td-muted">discord.py</td><td>{{ dpy_version }}</td></tr>
+            <tr><td class="td-muted">Loaded Cogs</td><td>{{ cog_count }}</td></tr>
+            <tr><td class="td-muted">Uptime</td><td>{{ uptime }}</td></tr>
+        </table>
+        <div class="mt-2">
+            <form method="POST" action="{{ url_for('dashboard.restart') }}" id="restart-form">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="button" class="btn btn-sm btn-danger" id="restart-btn">Restart Bot</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Feature Status by Server -->
+{% if guilds %}
+<div class="card mt-2">
+    <h3>Feature Status by Server</h3>
+    <div class="table-wrap mt-1">
+        <table>
+            <thead>
+                <tr>
+                    <th>Server</th>
+                    <th>Welcome</th>
+                    <th>Leveling</th>
+                    <th>RR</th>
+                    <th>Audit</th>
+                    <th>AutoRoles</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for guild in guilds %}
+            {% set fs = feature_status.get(guild.id|string, {}) %}
+            <tr>
+                <td>{{ guild.name }}</td>
+                <td>{% if fs.get('welcome') %}<span class="badge badge-success">On</span>{% else %}<span class="badge badge-muted">Off</span>{% endif %}</td>
+                <td>{% if fs.get('leveling') %}<span class="badge badge-success">On</span>{% else %}<span class="badge badge-muted">Off</span>{% endif %}</td>
+                <td>{% if fs.get('reaction_roles') %}<span class="badge badge-success">On</span>{% else %}<span class="badge badge-muted">Off</span>{% endif %}</td>
+                <td>{% if fs.get('audit') %}<span class="badge badge-success">On</span>{% else %}<span class="badge badge-muted">Off</span>{% endif %}</td>
+                <td>{% if fs.get('autoroles') %}<span class="badge badge-success">On</span>{% else %}<span class="badge badge-muted">Off</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<script>
+document.getElementById('restart-btn').addEventListener('click', function() {
+    if (confirm('Are you sure you want to restart the bot? It will be briefly offline.')) {
+        document.getElementById('restart-form').submit();
+    }
+});
+</script>
+{% endblock %}

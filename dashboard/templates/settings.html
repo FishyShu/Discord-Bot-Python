@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Bot Settings</h1>
+    <p>Configure bot status, activity, and feature toggles.</p>
+</div>
+
+<div class="card card-form">
+    <form method="POST">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <h3 style="margin-bottom:1rem;">Presence</h3>
+
+        <div class="form-group">
+            <label for="activity_type">Activity Type</label>
+            <select id="activity_type" name="activity_type">
+                <option value="playing" {{ 'selected' if settings.get('activity_type') == 'playing' }}>Playing</option>
+                <option value="listening" {{ 'selected' if settings.get('activity_type') == 'listening' }}>Listening to</option>
+                <option value="watching" {{ 'selected' if settings.get('activity_type') == 'watching' }}>Watching</option>
+                <option value="competing" {{ 'selected' if settings.get('activity_type') == 'competing' }}>Competing in</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="status_text">Status Text</label>
+            <input type="text" id="status_text" name="status_text"
+                   value="{{ settings.get('status_text', '') }}"
+                   placeholder="e.g. music for everyone">
+        </div>
+
+        <div class="form-group">
+            <label for="bot_status">Online Status</label>
+            <select id="bot_status" name="bot_status">
+                <option value="online" {{ 'selected' if settings.get('bot_status', 'online') == 'online' }}>Online</option>
+                <option value="idle" {{ 'selected' if settings.get('bot_status') == 'idle' }}>Idle</option>
+                <option value="dnd" {{ 'selected' if settings.get('bot_status') == 'dnd' }}>Do Not Disturb</option>
+                <option value="invisible" {{ 'selected' if settings.get('bot_status') == 'invisible' }}>Invisible</option>
+            </select>
+        </div>
+
+        <hr style="border-color:var(--border); margin:1.5rem 0;">
+        <h3 style="margin-bottom:1rem;">Features</h3>
+
+        <div class="form-group">
+            <div class="toggle">
+                <input type="checkbox" id="custom_commands_enabled" name="custom_commands_enabled"
+                       {{ 'checked' if settings.get('custom_commands_enabled', '1') == '1' }}>
+                <label for="custom_commands_enabled">Enable Custom Commands</label>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <div class="toggle">
+                <input type="checkbox" id="auto_replies_enabled" name="auto_replies_enabled"
+                       {{ 'checked' if settings.get('auto_replies_enabled', '1') == '1' }}>
+                <label for="auto_replies_enabled">Enable Auto Replies</label>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="default_volume">Default Volume (%)</label>
+            <input type="number" id="default_volume" name="default_volume" min="1" max="100"
+                   value="{{ settings.get('default_volume', '50') }}">
+        </div>
+
+        <div class="form-group">
+            <label for="command_prefix">Command Prefix</label>
+            <input type="text" id="command_prefix" name="command_prefix"
+                   value="{{ settings.get('command_prefix', '!') }}"
+                   maxlength="5">
+        </div>
+
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+    </form>
+</div>
+{% endblock %}

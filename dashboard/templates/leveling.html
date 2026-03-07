@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Leveling{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Leveling / XP</h1>
+    <p>Configure the XP system per server.</p>
+</div>
+
+<div class="server-grid">
+    {% for guild in guilds %}
+    <a href="{{ url_for('leveling.leveling_edit', guild_id=guild.id) }}" class="grid-link">
+        <div class="card server-card">
+            {% if guild.icon %}
+            <img src="{{ guild.icon.url }}" alt="">
+            {% else %}
+            <div class="server-icon-fallback">{{ guild.name[0] }}</div>
+            {% endif %}
+            <div class="server-info">
+                <h3>{{ guild.name }}</h3>
+                <p>
+                    {% set cfg = configs.get(guild.id) %}
+                    {% if cfg and cfg.enabled %}
+                    <span class="badge badge-success">Enabled</span>
+                    {% else %}
+                    <span class="badge badge-danger">Disabled</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

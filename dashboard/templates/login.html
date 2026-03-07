@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="blurple">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Music Bot Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+    (function() {
+        var saved = localStorage.getItem('dashboard-theme') || 'blurple';
+        document.documentElement.setAttribute('data-theme', saved);
+    })();
+    </script>
+</head>
+<body>
+<div class="login-container">
+    <div class="login-box card">
+        <h1>Music Bot Dashboard</h1>
+        <p>Enter the dashboard password to continue.</p>
+        {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+        <form method="POST">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autofocus required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%">Log In</button>
+        </form>
+        <div class="login-version">v{{ bot_version|default('1.0') }}</div>
+    </div>
+</div>
+</body>
+</html>

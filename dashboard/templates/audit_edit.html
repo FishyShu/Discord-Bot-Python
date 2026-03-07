@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ guild.name }} — Audit Log</h1>
+    <p>Choose which events to log and where.</p>
+</div>
+
+<form method="POST" action="{{ url_for('audit.audit_save', guild_id=guild.id) }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="card mb-2">
+        <div class="form-group">
+            <label for="log_channel_id">Log Channel</label>
+            <select name="log_channel_id" id="log_channel_id">
+                <option value="">— disabled —</option>
+                {% for ch in guild.text_channels %}
+                <option value="{{ ch.id }}" {% if cfg.get('log_channel_id') == ch.id|string %}selected{% endif %}>
+                    #{{ ch.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <h3 style="margin:1.5rem 0 1rem;">Events to Log</h3>
+
+        <div class="form-group toggle">
+            <input type="checkbox" name="log_edits" id="log_edits"
+                   {% if cfg.get('log_edits', 1) %}checked{% endif %}>
+            <label for="log_edits">Message Edits</label>
+        </div>
+        <div class="form-group toggle">
+            <input type="checkbox" name="log_deletes" id="log_deletes"
+                   {% if cfg.get('log_deletes', 1) %}checked{% endif %}>
+            <label for="log_deletes">Message Deletes</label>
+        </div>
+        <div class="form-group toggle">
+            <input type="checkbox" name="log_joins" id="log_joins"
+                   {% if cfg.get('log_joins', 1) %}checked{% endif %}>
+            <label for="log_joins">Member Joins</label>
+        </div>
+        <div class="form-group toggle">
+            <input type="checkbox" name="log_leaves" id="log_leaves"
+                   {% if cfg.get('log_leaves', 1) %}checked{% endif %}>
+            <label for="log_leaves">Member Leaves</label>
+        </div>
+        <div class="form-group toggle">
+            <input type="checkbox" name="log_role_changes" id="log_role_changes"
+                   {% if cfg.get('log_role_changes', 1) %}checked{% endif %}>
+            <label for="log_role_changes">Role Changes</label>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Save Settings</button>
+    <a href="{{ url_for('audit.audit_list') }}" class="btn btn-secondary">Back</a>
+</form>
+{% endblock %}

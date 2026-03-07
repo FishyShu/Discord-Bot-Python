@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="blurple">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dashboard{% endblock %} — Music Bot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='htmx.min.js') }}" defer></script>
+    <script>
+    (function() {
+        var saved = localStorage.getItem('dashboard-theme') || 'blurple';
+        document.documentElement.setAttribute('data-theme', saved);
+    })();
+    </script>
+</head>
+<body>
+<header class="top-navbar">
+    <div class="navbar-left">
+        {% if bot_avatar %}
+        <img src="{{ bot_avatar }}" class="navbar-logo" alt="Bot">
+        {% endif %}
+        <span class="navbar-brand">{{ bot_name or 'Music Bot' }}</span>
+        <button class="hamburger" id="hamburger-btn" aria-label="Toggle menu">&#9776;</button>
+    </div>
+    <div class="navbar-right">
+        <span class="navbar-user">Dashboard v{{ bot_version }}</span>
+        <form method="POST" action="{{ url_for('auth.logout') }}" style="display:inline;">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn btn-sm btn-danger">Logout</button></form>
+    </div>
+</header>
+<button class="sidebar-expand-btn" id="sidebar-expand-btn" title="Expand sidebar">&#9654;</button>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+<div class="layout">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-nav">
+            <!-- GENERAL -->
+            <div class="sidebar-category" data-category="general">
+                <span>General</span>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="sidebar-section" data-section="general">
+                <a href="{{ url_for('dashboard.overview') }}" class="sidebar-link {% if request.path == '/' %}active{% endif %}">
+                    <span class="icon">&#9881;</span> Overview
+                </a>
+                <a href="{{ url_for('settings.settings_page') }}" class="sidebar-link {% if '/settings' in request.path %}active{% endif %}">
+                    <span class="icon">&#9881;</span> Settings
+                </a>
+                <a href="{{ url_for('commands.command_list') }}" class="sidebar-link {% if '/commands' in request.path %}active{% endif %}">
+                    <span class="icon">&#9000;</span> Commands
+                </a>
+                <a href="{{ url_for('servers.server_list') }}" class="sidebar-link {% if '/servers' in request.path %}active{% endif %}">
+                    <span class="icon">&#127760;</span> Servers
+                </a>
+            </div>
+
+            <!-- ENGAGEMENT -->
+            <div class="sidebar-category" data-category="engagement">
+                <span>Engagement</span>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="sidebar-section" data-section="engagement">
+                <a href="{{ url_for('welcome.welcome_list') }}" class="sidebar-link {% if '/welcome' in request.path %}active{% endif %}">
+                    <span class="icon">&#128075;</span> Welcome
+                </a>
+                <a href="{{ url_for('autorole.autorole_list') }}" class="sidebar-link {% if '/autorole' in request.path %}active{% endif %}">
+                    <span class="icon">&#128100;</span> Auto-Roles
+                </a>
+                <a href="{{ url_for('reaction_roles.rr_list') }}" class="sidebar-link {% if '/reaction-roles' in request.path %}active{% endif %}">
+                    <span class="icon">&#127919;</span> Reaction Roles
+                </a>
+                <a href="{{ url_for('leveling.leveling_list') }}" class="sidebar-link {% if '/leveling' in request.path %}active{% endif %}">
+                    <span class="icon">&#11088;</span> Leveling
+                </a>
+            </div>
+
+            <!-- MUSIC -->
+            <div class="sidebar-category" data-category="music">
+                <span>Music</span>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="sidebar-section" data-section="music">
+                <a href="{{ url_for('music.music_list') }}" class="sidebar-link {% if '/music' in request.path %}active{% endif %}">
+                    <span class="icon">&#127925;</span> Music Player
+                </a>
+                <a href="{{ url_for('tts.tts_list') }}" class="sidebar-link {% if '/tts' in request.path %}active{% endif %}">
+                    <span class="icon">&#128266;</span> TTS
+                </a>
+            </div>
+
+            <!-- LOGGING -->
+            <div class="sidebar-category" data-category="logging">
+                <span>Logging</span>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="sidebar-section" data-section="logging">
+                <a href="{{ url_for('audit.audit_list') }}" class="sidebar-link {% if '/audit' in request.path %}active{% endif %}">
+                    <span class="icon">&#128220;</span> Audit Log
+                </a>
+            </div>
+
+            <!-- NOTIFICATIONS -->
+            <div class="sidebar-category" data-category="notifications">
+                <span>Notifications</span>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="sidebar-section" data-section="notifications">
+                <a href="{{ url_for('freestuff.freestuff_list') }}" class="sidebar-link {% if '/freestuff' in request.path %}active{% endif %}">
+                    <span class="icon">&#127873;</span> Free Games
+                </a>
+                <a href="{{ url_for('streaming.streaming_list') }}" class="sidebar-link {% if '/streaming' in request.path %}active{% endif %}">
+                    <span class="icon">&#128250;</span> Streams
+                </a>
+                <a href="{{ url_for('twitch_drops.twitch_drops_list') }}" class="sidebar-link {% if '/twitch-drops' in request.path %}active{% endif %}">
+                    <span class="icon">&#127918;</span> Twitch Drops
+                </a>
+            </div>
+
+            <!-- UTILITIES -->
+            <div class="sidebar-category" data-category="utilities">
+                <span>Utilities</span>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="sidebar-section" data-section="utilities">
+                <a href="{{ url_for('utility.utility_list') }}" class="sidebar-link {% if '/utility' in request.path %}active{% endif %}">
+                    <span class="icon">&#128736;</span> Utility
+                </a>
+            </div>
+        </div>
+        <div class="theme-picker">
+            <div class="theme-picker-label">Accent</div>
+            <div class="theme-swatches" id="theme-swatches">
+                <button type="button" class="theme-swatch" data-theme-name="blurple" style="background:#5865f2;" title="Blurple" aria-label="Blurple theme"></button>
+                <button type="button" class="theme-swatch" data-theme-name="rose" style="background:#e94560;" title="Rose" aria-label="Rose theme"></button>
+                <button type="button" class="theme-swatch" data-theme-name="emerald" style="background:#43b581;" title="Emerald" aria-label="Emerald theme"></button>
+                <button type="button" class="theme-swatch" data-theme-name="amber" style="background:#f0b232;" title="Amber" aria-label="Amber theme"></button>
+                <button type="button" class="theme-swatch" data-theme-name="ocean" style="background:#00b4d8;" title="Ocean" aria-label="Ocean theme"></button>
+            </div>
+        </div>
+        <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Collapse sidebar">&#9664; Collapse</button>
+    </aside>
+    <main class="main" id="main-content">
+        {% block content %}{% endblock %}
+    </main>
+</div>
+<div class="toast-container" id="toast-container"></div>
+<script>
+(function() {
+    /* Theme switcher */
+    var saved = localStorage.getItem('dashboard-theme') || 'blurple';
+
+    function setActive(name) {
+        document.querySelectorAll('.theme-swatch').forEach(function(s) {
+            s.classList.toggle('active', s.getAttribute('data-theme-name') === name);
+        });
+    }
+
+    setActive(saved);
+
+    document.querySelectorAll('.theme-swatch').forEach(function(swatch) {
+        swatch.addEventListener('click', function() {
+            var name = this.getAttribute('data-theme-name');
+            document.documentElement.setAttribute('data-theme', name);
+            localStorage.setItem('dashboard-theme', name);
+            setActive(name);
+        });
+    });
+
+    /* Mobile hamburger */
+    var hamburger = document.getElementById('hamburger-btn');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebar-overlay');
+
+    function toggleSidebar() {
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('open');
+    }
+
+    hamburger.addEventListener('click', toggleSidebar);
+    overlay.addEventListener('click', toggleSidebar);
+
+    /* Sidebar category collapse */
+    document.querySelectorAll('.sidebar-category').forEach(function(cat) {
+        cat.addEventListener('click', function() {
+            var name = this.getAttribute('data-category');
+            var section = document.querySelector('.sidebar-section[data-section="' + name + '"]');
+            if (section) {
+                this.classList.toggle('collapsed');
+                section.classList.toggle('collapsed');
+            }
+        });
+    });
+
+    /* Sidebar collapse/expand */
+    var collapseBtn = document.getElementById('sidebar-collapse-btn');
+    var expandBtn = document.getElementById('sidebar-expand-btn');
+    var mainContent = document.getElementById('main-content');
+
+    function collapseSidebar() {
+        sidebar.classList.add('collapsed-sidebar');
+        mainContent.classList.add('expanded');
+        expandBtn.classList.add('visible');
+    }
+
+    function expandSidebar() {
+        sidebar.classList.remove('collapsed-sidebar');
+        mainContent.classList.remove('expanded');
+        expandBtn.classList.remove('visible');
+    }
+
+    collapseBtn.addEventListener('click', collapseSidebar);
+    expandBtn.addEventListener('click', expandSidebar);
+
+    /* Toast system */
+    window.showToast = function(message, type) {
+        type = type || 'success';
+        var container = document.getElementById('toast-container');
+        var toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        toast.addEventListener('click', function() { dismissToast(toast); });
+        setTimeout(function() { dismissToast(toast); }, 4000);
+    };
+
+    function dismissToast(toast) {
+        if (toast.classList.contains('toast-out')) return;
+        toast.classList.add('toast-out');
+        setTimeout(function() { toast.remove(); }, 300);
+    }
+
+    /* Convert flash messages to toasts */
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    showToast({{ message|tojson }}, {{ category|tojson }});
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+})();
+</script>
+</body>
+</html>

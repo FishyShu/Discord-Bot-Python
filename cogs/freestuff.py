@@ -1,0 +1,374 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import re
+from datetime import datetime, timezone
+
+import aiohttp
+import discord
+from discord import app_commands
+from discord.ext import commands, tasks
+
+from dashboard import db
+
+log = logging.getLogger(__name__)
+
+EPIC_API = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
+REDDIT_URL = "https://www.reddit.com/r/FreeGameFindings/new.json?limit=25"
+
+PLATFORM_COLORS = {
+    "epic": 0x2F2F2F,
+    "steam": 0x1B2838,
+    "gog": 0x86328A,
+    "ubisoft": 0x0070FF,
+    "origin": 0xF56C2D,
+    "humble": 0xCC2929,
+    "other": 0x7289DA,
+}
+
+REDDIT_PLATFORM_RE = re.compile(r"\[(Steam|Epic|GOG|Ubisoft|Origin|Humble|Epic Games)\]", re.IGNORECASE)
+
+ALL_PLATFORMS = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "other"]
+
+PLATFORM_LABELS = {
+    "steam": "Steam",
+    "epic": "Epic Games",
+    "gog": "GOG",
+    "ubisoft": "Ubisoft",
+    "origin": "Origin / EA",
+    "humble": "Humble Bundle",
+    "other": "Other",
+}
+
+PLATFORM_EMOJIS = {
+    "steam": "\U0001f3ae",      # controller
+    "epic": "\U0001f3f0",       # castle
+    "gog": "\U0001f4bf",        # disc
+    "ubisoft": "\U0001f5a5",    # desktop
+    "origin": "\U0001f3c3",     # runner
+    "humble": "\U00002764",     # heart
+    "other": "\U0001f4e6",      # package
+}
+
+
+class PlatformSelect(discord.ui.Select):
+    def __init__(self, current_platforms: list[str], guild_id: str):
+        self.guild_id = guild_id
+        options = []
+        for p in ALL_PLATFORMS:
+            options.append(discord.SelectOption(
+                label=PLATFORM_LABELS[p],
+                value=p,
+                emoji=PLATFORM_EMOJIS[p],
+                default=p in current_platforms,
+            ))
+        super().__init__(
+            placeholder="Select platforms to track...",
+            min_values=1,
+            max_values=len(ALL_PLATFORMS),
+            options=options,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        selected = self.values
+        await db.upsert_freestuff_config(self.guild_id, platforms=json.dumps(selected))
+
+        cog = interaction.client.get_cog("FreeStuff")
+        if cog:
+            await cog.refresh_cache()
+
+        labels = ", ".join(PLATFORM_LABELS.get(p, p) for p in selected)
+        await interaction.response.edit_message(
+            content=f"Platforms updated: **{labels}**",
+            view=None,
+        )
+
+
+class PlatformConfigView(discord.ui.View):
+    def __init__(self, current_platforms: list[str], guild_id: str):
+        super().__init__(timeout=120)
+        self.add_item(PlatformSelect(current_platforms, guild_id))
+
+
+class FreeStuff(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self._cache: dict[str, dict] = {}
+        self._session: aiohttp.ClientSession | None = None
+        self._send_semaphore = asyncio.Semaphore(10)
+
+    async def cog_load(self):
+        await self.refresh_cache()
+        self._session = aiohttp.ClientSession()
+        self.check_loop.start()
+
+    async def cog_unload(self):
+        self.check_loop.cancel()
+        if self._session:
+            await self._session.close()
+
+    async def refresh_cache(self):
+        self._cache = await db.get_all_freestuff_configs_dict()
+
+    # --- Slash commands ---
+
+    freestuff_group = app_commands.Group(
+        name="freestuff",
+        description="Free game notifications",
+        default_permissions=discord.Permissions(manage_guild=True),
+    )
+
+    @freestuff_group.command(name="setup", description="Set up free game notifications in a channel")
+    @app_commands.describe(channel="Channel to send free game alerts to", role="Role to mention with announcements (optional)")
+    async def freestuff_setup(self, interaction: discord.Interaction, channel: discord.TextChannel, role: discord.Role = None):
+        guild_id = str(interaction.guild_id)
+        kwargs = {"channel_id": str(channel.id), "enabled": 1}
+        if role:
+            kwargs["mention_role_id"] = str(role.id)
+        await db.upsert_freestuff_config(guild_id, **kwargs)
+        await self.refresh_cache()
+        msg = f"Free game notifications enabled in {channel.mention}!"
+        if role:
+            msg += f" Mentioning {role.mention} with each alert."
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    @freestuff_group.command(name="disable", description="Disable free game notifications")
+    async def freestuff_disable(self, interaction: discord.Interaction):
+        guild_id = str(interaction.guild_id)
+        await db.upsert_freestuff_config(guild_id, enabled=0)
+        await self.refresh_cache()
+        await interaction.response.send_message("Free game notifications disabled.", ephemeral=True)
+
+    @freestuff_group.command(name="config", description="Configure free game notification platforms")
+    async def freestuff_config(self, interaction: discord.Interaction):
+        guild_id = str(interaction.guild_id)
+        cfg = await db.get_freestuff_config(guild_id)
+        if not cfg:
+            await interaction.response.send_message(
+                "Free game notifications are not set up. Use `/freestuff setup <channel>` first.",
+                ephemeral=True,
+            )
+            return
+
+        channel = interaction.guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
+        platforms = json.loads(cfg.get("platforms", "[]"))
+        enabled = bool(cfg.get("enabled"))
+
+        embed = discord.Embed(title="Free Stuff Config", color=0x43B581)
+        embed.add_field(name="Enabled", value="Yes" if enabled else "No", inline=True)
+        embed.add_field(name="Channel", value=channel.mention if channel else "Not set", inline=True)
+
+        platform_lines = []
+        for p in ALL_PLATFORMS:
+            status = "enabled" if p in platforms else "disabled"
+            emoji = PLATFORM_EMOJIS.get(p, "")
+            label = PLATFORM_LABELS.get(p, p)
+            indicator = "\u2705" if p in platforms else "\u274c"
+            platform_lines.append(f"{emoji} {label}: {indicator}")
+        embed.add_field(name="Platforms", value="\n".join(platform_lines), inline=False)
+        embed.set_footer(text="Use the dropdown below to change tracked platforms")
+
+        view = PlatformConfigView(platforms, guild_id)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @freestuff_group.command(name="check", description="Manually check for free games now")
+    async def freestuff_check(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        # Fetch from sources (adds new ones to DB, notifies guilds)
+        new_games = await self._fetch_all()
+
+        # Always show recent games from the DB so the user sees what's tracked
+        recent = await db.get_free_games(limit=10)
+
+        if new_games:
+            msg = f"Found **{len(new_games)}** new free game(s)! Notifications sent.\n\n"
+        else:
+            msg = "No *new* free games found right now.\n\n"
+
+        if recent:
+            embed = discord.Embed(title="Recent Free Games", color=0x43B581)
+            for game in recent[:10]:
+                platform = game.get("platform", "?").title()
+                price = game.get("original_price") or "Free"
+                discovered = game.get("discovered_at", "")[:10]
+                embed.add_field(
+                    name=f"{game['title'][:50]}",
+                    value=f"{platform} | Was {price} | Found {discovered}\n[Link]({game['url']})",
+                    inline=False,
+                )
+            await interaction.followup.send(content=msg, embed=embed)
+        else:
+            msg += "No free games have been discovered yet. The bot checks every 20 minutes."
+            await interaction.followup.send(msg)
+
+    # --- Background loop ---
+
+    @tasks.loop(minutes=20)
+    async def check_loop(self):
+        try:
+            await self._fetch_all()
+        except Exception:
+            log.exception("Error in freestuff check loop")
+
+    @check_loop.before_loop
+    async def before_check_loop(self):
+        await self.bot.wait_until_ready()
+
+    async def _fetch_all(self) -> list[dict]:
+        """Fetch from all sources, dedup, notify guilds. Returns list of new games."""
+        new_games = []
+        new_games.extend(await self._fetch_epic())
+        new_games.extend(await self._fetch_reddit())
+
+        if new_games:
+            await self._notify_guilds(new_games)
+
+        return new_games
+
+    async def _fetch_epic(self) -> list[dict]:
+        new_games = []
+        try:
+            async with self._session.get(EPIC_API, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+
+            elements = data.get("data", {}).get("Catalog", {}).get("searchStore", {}).get("elements", [])
+            for elem in elements:
+                title = elem.get("title", "")
+                offers = elem.get("promotions")
+                if not offers:
+                    continue
+
+                promo_list = offers.get("promotionalOffers", [])
+                for promo_group in promo_list:
+                    for offer in promo_group.get("promotionalOffers", []):
+                        discount_pct = offer.get("discountSetting", {}).get("discountPercentage", 0)
+                        if discount_pct != 0:
+                            continue
+
+                        slug = elem.get("catalogNs", {}).get("mappings", [{}])
+                        page_slug = slug[0].get("pageSlug", "") if slug else ""
+                        url = f"https://store.epicgames.com/p/{page_slug}" if page_slug else ""
+                        if not url:
+                            url = f"https://store.epicgames.com/browse?q={title.replace(' ', '+')}"
+
+                        image_url = ""
+                        for img in elem.get("keyImages", []):
+                            if img.get("type") in ("OfferImageWide", "DieselStoreFrontWide", "Thumbnail"):
+                                image_url = img.get("url", "")
+                                break
+
+                        price_info = (elem.get("price") or {}).get("totalPrice", {})
+                        original = (price_info.get("fmtPrice") or {}).get("originalPrice", "")
+
+                        game_id = await db.add_free_game(
+                            title=title, url=url, platform="epic",
+                            image_url=image_url, original_price=original, source="epic",
+                        )
+                        if game_id:
+                            new_games.append({
+                                "title": title, "url": url, "platform": "epic",
+                                "image_url": image_url, "original_price": original,
+                            })
+        except Exception:
+            log.exception("Error fetching Epic free games")
+        return new_games
+
+    async def _fetch_reddit(self) -> list[dict]:
+        new_games = []
+        try:
+            headers = {"User-Agent": "DiscordBot/1.0"}
+            async with self._session.get(REDDIT_URL, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+
+            posts = data.get("data", {}).get("children", [])
+            for post in posts:
+                pdata = post.get("data", {})
+                title = pdata.get("title", "")
+                url = pdata.get("url", "")
+                if not url or pdata.get("is_self"):
+                    continue
+
+                # Parse platform from title
+                m = REDDIT_PLATFORM_RE.search(title)
+                platform = m.group(1).lower() if m else "other"
+                if platform == "epic games":
+                    platform = "epic"
+
+                game_id = await db.add_free_game(
+                    title=title, url=url, platform=platform,
+                    source="reddit",
+                )
+                if game_id:
+                    new_games.append({
+                        "title": title, "url": url, "platform": platform,
+                        "image_url": pdata.get("thumbnail") if pdata.get("thumbnail", "").startswith("http") else "",
+                        "original_price": "",
+                    })
+        except Exception:
+            log.exception("Error fetching Reddit free games")
+        return new_games
+
+    async def _send_with_ratelimit(self, channel, embed, content=None):
+        """Send with semaphore concurrency limit and 429 retry-after handling."""
+        async with self._send_semaphore:
+            try:
+                await channel.send(content=content, embed=embed)
+            except discord.HTTPException as e:
+                if e.status == 429:
+                    retry_after = getattr(e, "retry_after", 5)
+                    await asyncio.sleep(retry_after)
+                    try:
+                        await channel.send(content=content, embed=embed)
+                    except discord.HTTPException:
+                        log.warning("Failed to send free game notification after retry to %s", channel.id)
+                else:
+                    log.warning("Failed to send free game notification to %s: %s", channel.id, e)
+
+    async def _notify_guilds(self, games: list[dict]):
+        configs = await db.get_all_freestuff_configs()
+        tasks = []
+        for cfg in configs:
+            guild = self.bot.get_guild(int(cfg["guild_id"]))
+            if not guild:
+                continue
+            channel = guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
+            if not channel:
+                continue
+
+            allowed_platforms = json.loads(cfg.get("platforms", "[]"))
+            mention_role_id = cfg.get("mention_role_id")
+            content = f"<@&{mention_role_id}>" if mention_role_id else None
+
+            for game in games:
+                if allowed_platforms and game["platform"] not in allowed_platforms:
+                    continue
+
+                color = PLATFORM_COLORS.get(game["platform"], 0x7289DA)
+                embed = discord.Embed(
+                    title=f"Free: {game['title']}",
+                    url=game["url"],
+                    color=color,
+                )
+                embed.add_field(name="Platform", value=game["platform"].title(), inline=True)
+                if game.get("original_price"):
+                    embed.add_field(name="Original Price", value=game["original_price"], inline=True)
+                if game.get("image_url"):
+                    embed.set_thumbnail(url=game["image_url"])
+                embed.set_footer(text="Free Game Alert")
+                embed.timestamp = datetime.now(timezone.utc)
+
+                tasks.append(self._send_with_ratelimit(channel, embed, content=content))
+
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(FreeStuff(bot))
