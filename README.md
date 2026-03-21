@@ -142,7 +142,7 @@ Manage the entire bot through a clean web interface — no Discord commands requ
 ```bash
 # 1. Clone the repo
 git clone https://github.com/FishyShu/Discord-Bot-Python.git
-cd Claude_Code
+cd Discord-Bot-Python
 
 # 2. Install dependencies
 pip install -r requirements.txt
