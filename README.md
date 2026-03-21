@@ -4,7 +4,7 @@
 
 **A feature-rich, self-hosted Discord bot with a web dashboard**
 
-[![Version](https://img.shields.io/badge/version-1.1.0-blue?style=for-the-badge)](https://github.com/FishyShu/Claude_Code/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue?style=for-the-badge)](https://github.com/FishyShu/Discord-Bot-Python/releases)
 [![Python](https://img.shields.io/badge/python-3.11+-yellow?style=for-the-badge&logo=python)](https://python.org)
 [![discord.py](https://img.shields.io/badge/discord.py-2.x-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discordpy.readthedocs.io)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
@@ -141,7 +141,7 @@ Manage the entire bot through a clean web interface — no Discord commands requ
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/FishyShu/Claude_Code.git
+git clone https://github.com/FishyShu/Discord-Bot-Python.git
 cd Claude_Code
 
 # 2. Install dependencies
@@ -239,5 +239,5 @@ MIT — free to use, modify, and self-host.
 ---
 
 <div align="center">
-Made with ❤️ &nbsp;·&nbsp; <a href="https://github.com/FishyShu/Claude_Code/releases">Releases</a> &nbsp;·&nbsp; <a href="https://github.com/FishyShu/Claude_Code/issues">Issues</a>
+Made with ❤️ &nbsp;·&nbsp; <a href="https://github.com/FishyShu/Discord-Bot-Python/releases">Releases</a> &nbsp;·&nbsp; <a href="https://github.com/FishyShu/Discord-Bot-Python/issues">Issues</a>
 </div>
