@@ -9,8 +9,9 @@ from discord import app_commands
 from discord.ext import commands
 
 from utils.player import GuildMusicPlayer, LoopMode, TrackInfo
-from utils.youtube import extract_info, search_youtube, get_stream_url, FFMPEG_OPTIONS
+from utils.youtube import extract_info, extract_playlist, is_youtube_playlist, search_youtube, get_stream_url, FFMPEG_OPTIONS
 from utils.spotify import is_spotify_url, get_tracks_from_url
+from utils.tidal import is_tidal_url, get_tracks_from_tidal_url
 
 import functools
 
@@ -305,6 +306,12 @@ class Music(commands.Cog):
 
             # Lazy-resolve stream URL (skip if already cached from extraction)
             stream_url = track.stream_url or await get_stream_url(track.url)
+            if stream_url is None and track.url.startswith("ytsearch:"):
+                from dashboard import db
+                fallback = await db.get_guild_setting(str(guild.id), "music_fallback_service", "youtube")
+                if fallback == "soundcloud":
+                    sc_url = track.url.replace("ytsearch:", "scsearch:", 1)
+                    stream_url = await get_stream_url(sc_url)
             if stream_url is None:
                 if player.text_channel:
                     await player.text_channel.send(f"Could not get stream for **{track.title}**, skipping.")
@@ -365,7 +372,26 @@ class Music(commands.Cog):
 
         is_url = query.startswith("http://") or query.startswith("https://")
 
-        if is_spotify_url(query):
+        if is_youtube_playlist(query):
+            entries = await extract_playlist(query)
+            if not entries:
+                await interaction.followup.send("Could not load YouTube playlist.", ephemeral=True)
+                return
+            remaining = MAX_QUEUE_SIZE - len(player.queue)
+            for entry in entries[:remaining]:
+                vid_url = entry.get("webpage_url") or entry.get("url") or ""
+                if not vid_url.startswith("http") and entry.get("id"):
+                    vid_url = f"https://www.youtube.com/watch?v={entry['id']}"
+                track = TrackInfo(
+                    title=entry.get("title", "Unknown"),
+                    url=vid_url,
+                    duration=entry.get("duration"),
+                    thumbnail=entry.get("thumbnail"),
+                    requester=interaction.user.display_name,
+                )
+                player.add(track)
+                tracks_added.append(track)
+        elif is_spotify_url(query):
             loop = asyncio.get_running_loop()
             spotify_tracks = await loop.run_in_executor(None, functools.partial(get_tracks_from_url, query))
             if not spotify_tracks:
@@ -381,6 +407,26 @@ class Music(commands.Cog):
                     title=st["title"],
                     url=f"ytsearch:{st['query']}",
                     duration=st.get("duration"),
+                    requester=interaction.user.display_name,
+                )
+                player.add(track)
+                tracks_added.append(track)
+        elif is_tidal_url(query):
+            loop = asyncio.get_running_loop()
+            tidal_tracks = await loop.run_in_executor(None, functools.partial(get_tracks_from_tidal_url, query))
+            if not tidal_tracks:
+                await interaction.followup.send("Could not get tracks from Tidal URL.", ephemeral=True)
+                return
+            remaining = MAX_QUEUE_SIZE - len(player.queue)
+            if remaining <= 0:
+                await interaction.followup.send("Queue is full (max 500 tracks).", ephemeral=True)
+                return
+            tidal_tracks = tidal_tracks[:remaining]
+            for tt in tidal_tracks:
+                track = TrackInfo(
+                    title=tt["title"],
+                    url=f"ytsearch:{tt['query']}",
+                    duration=tt.get("duration"),
                     requester=interaction.user.display_name,
                 )
                 player.add(track)
@@ -429,9 +475,15 @@ class Music(commands.Cog):
                 color=discord.Color.green(),
             )
         else:
+            if is_tidal_url(query):
+                source = "Tidal"
+            elif is_spotify_url(query):
+                source = "Spotify"
+            else:
+                source = "YouTube playlist"
             embed = discord.Embed(
                 title="Added to queue",
-                description=f"**{len(tracks_added)} tracks** from Spotify",
+                description=f"**{len(tracks_added)} tracks** from {source}",
                 color=discord.Color.green(),
             )
         await interaction.followup.send(embed=embed)
@@ -643,12 +695,18 @@ class Music(commands.Cog):
     @app_commands.describe(
         default_volume="Default volume percentage (1-100)",
         max_queue_size="Maximum queue size (1-1000)",
+        fallback_service="Fallback service when YouTube stream fails",
     )
+    @app_commands.choices(fallback_service=[
+        app_commands.Choice(name="YouTube", value="youtube"),
+        app_commands.Choice(name="SoundCloud", value="soundcloud"),
+    ])
     async def musicconfig_set(
         self,
         interaction: discord.Interaction,
         default_volume: Optional[app_commands.Range[int, 1, 100]] = None,
         max_queue_size: Optional[app_commands.Range[int, 1, 1000]] = None,
+        fallback_service: Optional[app_commands.Choice[str]] = None,
     ):
         from dashboard import db
 
@@ -660,6 +718,9 @@ class Music(commands.Cog):
         if max_queue_size is not None:
             await db.set_guild_setting(gid, "music_max_queue_size", str(max_queue_size))
             parts.append(f"Max queue size set to **{max_queue_size}**")
+        if fallback_service is not None:
+            await db.set_guild_setting(gid, "music_fallback_service", fallback_service.value)
+            parts.append(f"Fallback service set to **{fallback_service.name}**")
         if not parts:
             await interaction.response.send_message("No changes specified.", ephemeral=True)
             return
@@ -672,9 +733,11 @@ class Music(commands.Cog):
         gid = str(interaction.guild_id)
         volume = await db.get_guild_setting(gid, "music_default_volume", "50")
         max_queue = await db.get_guild_setting(gid, "music_max_queue_size", "500")
+        fallback = await db.get_guild_setting(gid, "music_fallback_service", "youtube")
         embed = discord.Embed(title="Music Configuration", color=0x3498DB)
         embed.add_field(name="Default Volume", value=f"{volume}%")
         embed.add_field(name="Max Queue Size", value=max_queue)
+        embed.add_field(name="Fallback Service", value=fallback.capitalize())
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @commands.Cog.listener()

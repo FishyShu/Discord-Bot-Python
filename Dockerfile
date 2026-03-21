@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+LABEL version="1.2.0" \
+      description="Discord Bot — music, moderation, and more"
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg build-essential && \
     apt-get clean && rm -rf /var/lib/apt/lists/*

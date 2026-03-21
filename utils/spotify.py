@@ -95,7 +95,7 @@ def _embed_fallback(url: str) -> list[dict]:
         )
         if not match:
             log.debug("No __NEXT_DATA__ found in embed page for %s", url)
-            return _embed_fallback(url)
+            return _oembed_fallback(url)
 
         data = json.loads(match.group(1))
         entity = data["props"]["pageProps"]["state"]["data"]["entity"]
@@ -111,7 +111,7 @@ def _embed_fallback(url: str) -> list[dict]:
                 duration = entity.get("duration")
                 return [{"query": query, "title": full,
                          "duration": duration // 1000 if duration else None}]
-            return _embed_fallback(url)
+            return _oembed_fallback(url)
 
         results = []
         for track in track_list:
@@ -133,7 +133,7 @@ def _embed_fallback(url: str) -> list[dict]:
 
     except Exception:
         log.debug("Embed fallback failed for %s, trying oEmbed", url, exc_info=True)
-        return _embed_fallback(url)
+        return _oembed_fallback(url)
 
 
 def _oembed_fallback(url: str) -> list[dict]:

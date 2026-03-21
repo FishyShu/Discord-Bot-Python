@@ -186,5 +186,31 @@ async def download_media(url: str, *, audio_only: bool = True) -> tuple[str, str
         return None
 
 
+def is_youtube_playlist(url: str) -> bool:
+    return ("youtube.com" in url or "youtu.be" in url) and (
+        "list=" in url or "/playlist" in url
+    )
+
+
+async def extract_playlist(url: str) -> list[dict]:
+    opts = {**YDL_OPTIONS, "noplaylist": False, "extract_flat": "in_playlist"}
+
+    def _get():
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if info is None:
+                    return []
+                return [e for e in info.get("entries", []) if e is not None]
+        except Exception:
+            return []
+
+    loop = asyncio.get_running_loop()
+    try:
+        return await asyncio.wait_for(loop.run_in_executor(None, _get), timeout=60)
+    except asyncio.TimeoutError:
+        return []
+
+
 # Backwards-compatible alias
 download_audio = functools.partial(download_media, audio_only=True)
