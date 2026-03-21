@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Anti-Raid — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <a href="{{ url_for('antiraid.antiraid_list') }}" class="btn btn-sm btn-secondary mb-1">← Back</a>
+    <h1>{{ guild.name }} — Anti-Raid</h1>
+</div>
+
+<div class="card mt-2">
+    <h3>Protection Settings</h3>
+    <form method="POST" action="{{ url_for('antiraid.antiraid_save', guild_id=guild.id) }}" class="mt-1">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group">
+            <label class="toggle-label">
+                <input type="checkbox" name="enabled" class="toggle-input" {% if cfg.get('enabled') %}checked{% endif %}>
+                <span class="toggle-track"></span>
+                Enable Anti-Raid
+            </label>
+        </div>
+
+        <div class="form-group mt-1">
+            <label>Action on trigger</label>
+            <select name="action" class="input">
+                {% for act in ['kick', 'ban', 'timeout'] %}
+                <option value="{{ act }}" {% if cfg.get('action', 'kick') == act %}selected{% endif %}>{{ act|capitalize }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group mt-1">
+            <label>Mass-join threshold (joins / 10s)</label>
+            <input type="number" name="mass_join_threshold" class="input" value="{{ cfg.get('mass_join_threshold', 10) }}" min="1" max="100">
+        </div>
+
+        <div class="form-group mt-1">
+            <label>Minimum account age (days)</label>
+            <input type="number" name="new_account_age" class="input" value="{{ cfg.get('new_account_age', 7) }}" min="0" max="365">
+        </div>
+
+        <div class="form-group mt-1">
+            <label>Mention spam threshold (mentions / message)</label>
+            <input type="number" name="mention_spam_threshold" class="input" value="{{ cfg.get('mention_spam_threshold', 5) }}" min="1" max="50">
+        </div>
+
+        <div class="form-group mt-1">
+            <label>Message spam threshold (messages / 5s)</label>
+            <input type="number" name="message_spam_threshold" class="input" value="{{ cfg.get('message_spam_threshold', 10) }}" min="1" max="100">
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-2">Save Settings</button>
+    </form>
+</div>
+
+<div class="card mt-2">
+    <h3>Lockdown Controls</h3>
+    <p class="text-muted">Immediately lock or unlock all channels in this server.</p>
+    <div class="inline-form mt-1">
+        <form method="POST" action="{{ url_for('antiraid.antiraid_lockdown', guild_id=guild.id) }}" style="display:inline;">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Lock down all channels now?')">🔒 Lockdown</button>
+        </form>
+        <form method="POST" action="{{ url_for('antiraid.antiraid_unlock', guild_id=guild.id) }}" style="display:inline; margin-left:0.5rem;">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-success" onclick="return confirm('Unlock all channels?')">🔓 Unlock</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Dashboard{% endblock %} — Music Bot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="{{ url_for('static', filename='htmx.min.js') }}" defer></script>
     <script>
@@ -53,6 +56,20 @@
                 </a>
             </div>
 
+            <!-- MODERATION -->
+            <div class="sidebar-category" data-category="moderation">
+                <span>Moderation</span>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="sidebar-section" data-section="moderation">
+                <a href="{{ url_for('moderation.moderation_list') }}" class="sidebar-link {% if '/moderation' in request.path %}active{% endif %}">
+                    <span class="icon">&#9876;</span> Moderation
+                </a>
+                <a href="{{ url_for('antiraid.antiraid_list') }}" class="sidebar-link {% if '/antiraid' in request.path %}active{% endif %}">
+                    <span class="icon">&#128737;</span> Anti-Raid
+                </a>
+            </div>
+
             <!-- ENGAGEMENT -->
             <div class="sidebar-category" data-category="engagement">
                 <span>Engagement</span>
@@ -70,6 +87,9 @@
                 </a>
                 <a href="{{ url_for('leveling.leveling_list') }}" class="sidebar-link {% if '/leveling' in request.path %}active{% endif %}">
                     <span class="icon">&#11088;</span> Leveling
+                </a>
+                <a href="{{ url_for('giveaways.giveaways_list') }}" class="sidebar-link {% if '/giveaways' in request.path %}active{% endif %}">
+                    <span class="icon">&#127873;</span> Giveaways
                 </a>
             </div>
 
@@ -123,6 +143,9 @@
             <div class="sidebar-section" data-section="utilities">
                 <a href="{{ url_for('utility.utility_list') }}" class="sidebar-link {% if '/utility' in request.path %}active{% endif %}">
                     <span class="icon">&#128736;</span> Utility
+                </a>
+                <a href="{{ url_for('backup.backup_list') }}" class="sidebar-link {% if '/backup' in request.path %}active{% endif %}">
+                    <span class="icon">&#128190;</span> Backup
                 </a>
             </div>
         </div>

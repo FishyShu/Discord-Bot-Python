@@ -34,42 +34,71 @@ HELP_CATEGORIES: dict[str, list[tuple[str, str]]] = {
         ("remove", "Remove a track from the queue"),
         ("move", "Move a track in the queue"),
         ("disconnect", "Disconnect the bot from voice"),
+        ("lyrics", "Show lyrics for the current or a named track"),
     ],
-    "Soundboard": [
-        ("soundboard", "Play a soundboard clip in voice"),
-        ("sb", "Shortcut for /soundboard"),
-    ],
-    "TTS": [
+    "Voice Tools": [
         ("tts", "Send a text-to-speech message in voice"),
         ("ttsconfig", "Configure TTS voice settings"),
+        ("soundboard", "Play a soundboard clip in voice"),
+        ("sb", "Shortcut for /soundboard"),
+        ("separate", "Separate vocals and instrumentals from an audio file"),
     ],
     "Moderation": [
         ("kick", "Kick a member from the server"),
         ("ban", "Ban a member from the server"),
         ("unban", "Unban a user"),
+        ("softban", "Ban and immediately unban to delete messages"),
         ("timeout", "Timeout a member"),
         ("warn", "Warn a member"),
         ("warnings", "View warnings for a member"),
-        ("clearwarnings", "Clear warnings for a member"),
+        ("clearwarnings", "Clear all warnings for a member"),
+        ("delwarn", "Delete a specific warning by ID"),
+        ("modlog", "View the moderation log for a member"),
         ("purge", "Delete multiple messages"),
-        ("clean", "Delete bot messages"),
+    ],
+    "Anti-Raid": [
+        ("antiraid set", "Configure anti-raid protection settings"),
+        ("antiraid show", "Show current anti-raid configuration"),
+        ("antiraid lockdown", "Lock all channels immediately"),
+        ("antiraid unlock", "Unlock all channels from lockdown"),
+    ],
+    "Fun": [
+        ("meme", "Fetch a random meme"),
+        ("animal", "Get a random animal image"),
+        ("8ball", "Ask the magic 8-ball a question"),
+        ("mock", "Mock someone's message"),
+        ("ship", "Calculate a ship score between two users"),
+        ("avatar", "Show a user's avatar"),
     ],
     "Leveling": [
         ("rank", "View your or another member's rank"),
         ("leaderboard", "View the server XP leaderboard"),
-        ("xp", "Manage XP for a member"),
+        ("xp set", "Set XP for a member"),
+        ("xp reset", "Reset XP for a member"),
+        ("xp config", "View XP configuration"),
+        ("xp enable", "Enable the leveling system"),
+        ("xp disable", "Disable the leveling system"),
+        ("xp setrate", "Set XP gain rate"),
+        ("xp setchannel", "Set level-up announcement channel"),
+        ("xp setmessage", "Set level-up message"),
+        ("xp addreward", "Add a role reward for a level"),
+        ("xp removereward", "Remove a role reward"),
+    ],
+    "Giveaways": [
+        ("giveaway start", "Start a new giveaway"),
+        ("giveaway end", "End a giveaway early"),
+        ("giveaway reroll", "Reroll winners for a giveaway"),
+        ("giveaway list", "List active giveaways"),
     ],
     "Utility": [
         ("help", "Show this help menu"),
         ("userinfo", "Show information about a user"),
         ("serverinfo", "Show information about this server"),
-        ("avatar", "Show a user's avatar"),
         ("poll", "Create a simple poll"),
         ("remind", "Set a reminder"),
         ("reminders", "List your active reminders"),
         ("cancelreminder", "Cancel a reminder by ID"),
         ("download", "Download audio/video from a URL"),
-        ("separate", "Separate vocals and instrumentals from an audio file"),
     ],
     "Notifications": [
         ("freestuff setup", "Set up free game notifications"),
@@ -79,13 +108,22 @@ HELP_CATEGORIES: dict[str, list[tuple[str, str]]] = {
         ("stream add", "Track a streamer for go-live notifications"),
         ("stream remove", "Stop tracking a streamer"),
         ("stream list", "List tracked streamers"),
+        ("drops setup", "Set up Twitch drops notifications"),
+        ("drops disable", "Disable Twitch drops notifications"),
+        ("drops filter", "Filter drops by game"),
+        ("drops history", "View drops history"),
+        ("drops clearcache", "Clear drops cache"),
+        ("drops check", "Manually check for drops"),
     ],
     "Server Config": [
         ("welcome", "Configure welcome messages"),
         ("auditlog", "Configure audit logging"),
+        ("autorole", "Configure automatic role assignment"),
         ("reactionrole", "Set up reaction roles"),
+        ("autotranslate", "Configure auto-translation"),
         ("customcommand", "Manage custom commands"),
         ("musicconfig", "Configure music settings"),
+        ("backup", "Backup and restore server configuration"),
     ],
 }
 
@@ -165,16 +203,6 @@ class Utility(commands.Cog):
         embed.add_field(name="Created", value=discord.utils.format_dt(guild.created_at, "R"))
         embed.add_field(name="Boost Level", value=guild.premium_tier)
         embed.add_field(name="Boosts", value=guild.premium_subscription_count or 0)
-        await interaction.response.send_message(embed=embed)
-
-    # --- /avatar ---
-
-    @app_commands.command(name="avatar", description="Show a user's avatar")
-    @app_commands.describe(member="The user whose avatar to show")
-    async def avatar(self, interaction: discord.Interaction, member: discord.Member | None = None):
-        member = member or interaction.user
-        embed = discord.Embed(title=f"{member}'s Avatar", color=0x3498DB)
-        embed.set_image(url=member.display_avatar.with_size(512).url)
         await interaction.response.send_message(embed=embed)
 
     # --- /poll ---

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Backup{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Backup</h1>
+    <p>Export and restore server configuration.</p>
+</div>
+
+<div class="server-grid">
+    {% for guild in guilds %}
+    <a href="{{ url_for('backup.backup_guild', guild_id=guild.id) }}" class="grid-link">
+        <div class="card server-card">
+            {% if guild.icon %}
+            <img src="{{ guild.icon.url }}" alt="">
+            {% else %}
+            <div class="server-icon-fallback">{{ guild.name[0] }}</div>
+            {% endif %}
+            <div class="server-info">
+                <h3>{{ guild.name }}</h3>
+                <p><span class="badge badge-muted">{{ guild.member_count or 0 }} members</span></p>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

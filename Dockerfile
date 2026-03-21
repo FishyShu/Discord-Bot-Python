@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-LABEL version="1.2.0" \
+LABEL version="1.2.1" \
       description="Discord Bot — music, moderation, and more"
 
 RUN apt-get update && \

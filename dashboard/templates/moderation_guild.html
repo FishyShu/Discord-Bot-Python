@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Moderation — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <a href="{{ url_for('moderation.moderation_list') }}" class="btn btn-sm btn-secondary mb-1">← Back</a>
+    <h1>{{ guild.name }} — Moderation</h1>
+</div>
+
+<!-- Warnings Section -->
+<div class="card mt-2">
+    <h3>Warnings</h3>
+    <form method="GET" class="inline-form mt-1">
+        <input type="text" name="user_id" placeholder="Search by User ID" value="{{ user_id_filter }}" class="input-sm">
+        <button type="submit" class="btn btn-sm btn-primary">Search</button>
+        {% if user_id_filter %}
+        <a href="{{ url_for('moderation.moderation_guild', guild_id=guild.id) }}" class="btn btn-sm btn-secondary">Clear</a>
+        {% endif %}
+    </form>
+    {% if user_id_filter %}
+    {% if warnings %}
+    <div class="table-wrap mt-1">
+        <table>
+            <thead>
+                <tr>
+                    <th>#ID</th>
+                    <th>Reason</th>
+                    <th>Moderator</th>
+                    <th>Date</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for w in warnings %}
+            <tr>
+                <td class="td-muted">#{{ w.id }}</td>
+                <td>{{ w.reason or '—' }}</td>
+                <td><code>{{ w.moderator_id }}</code></td>
+                <td class="td-muted">{{ w.created_at[:10] if w.created_at else '—' }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('moderation.delete_warning', guild_id=guild.id, warning_id=w.id) }}">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="user_id" value="{{ user_id_filter }}">
+                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this warning?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted mt-1">No warnings found for user <code>{{ user_id_filter }}</code>.</p>
+    {% endif %}
+    {% else %}
+    <p class="text-muted mt-1">Enter a User ID to search warnings.</p>
+    {% endif %}
+</div>
+
+<!-- Modlog Section -->
+<div class="card mt-2">
+    <h3>Moderation Log <span class="badge badge-muted">Last 50</span></h3>
+    <form method="GET" class="inline-form mt-1">
+        {% if user_id_filter %}<input type="hidden" name="user_id" value="{{ user_id_filter }}">{% endif %}
+        <select name="action" class="input-sm">
+            <option value="">All Actions</option>
+            {% for act in ['kick', 'ban', 'unban', 'softban', 'timeout', 'warn', 'mute', 'unmute'] %}
+            <option value="{{ act }}" {% if action_filter == act %}selected{% endif %}>{{ act|capitalize }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+    </form>
+    {% if modlog %}
+    <div class="table-wrap mt-1">
+        <table>
+            <thead>
+                <tr>
+                    <th>#ID</th>
+                    <th>Action</th>
+                    <th>User</th>
+                    <th>Moderator</th>
+                    <th>Reason</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for entry in modlog %}
+            <tr>
+                <td class="td-muted">#{{ entry.id }}</td>
+                <td><span class="badge badge-warning">{{ entry.action }}</span></td>
+                <td><code>{{ entry.user_id }}</code></td>
+                <td><code>{{ entry.moderator_id }}</code></td>
+                <td>{{ entry.reason or '—' }}</td>
+                <td class="td-muted">{{ entry.created_at[:10] if entry.created_at else '—' }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted mt-1">No modlog entries found.</p>
+    {% endif %}
+</div>
+{% endblock %}

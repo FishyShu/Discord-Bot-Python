@@ -21,7 +21,7 @@ for _p in _ffmpeg_matches:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 log = logging.getLogger("bot")
 
-BOT_VERSION = "1.2.0"
+BOT_VERSION = "1.2.1"
 
 
 class MusicBot(commands.Bot):
@@ -42,6 +42,8 @@ class MusicBot(commands.Bot):
             "cogs.soundboard", "cogs.autorole",
             "cogs.freestuff", "cogs.streaming",
             "cogs.twitch_drops", "cogs.voice_separate",
+            "cogs.moderation", "cogs.fun", "cogs.autotranslate",
+            "cogs.giveaways", "cogs.antiraid", "cogs.backup",
         ]
         for ext in cog_extensions:
             try:

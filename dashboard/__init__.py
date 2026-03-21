@@ -69,6 +69,10 @@ def create_app(bot=None) -> Quart:
     from .routes_freestuff import freestuff_bp
     from .routes_streaming import streaming_bp
     from .routes_twitch_drops import twitch_drops_bp
+    from .routes_moderation import moderation_bp
+    from .routes_antiraid import antiraid_bp
+    from .routes_giveaways import giveaways_bp
+    from .routes_backup import backup_bp
 
     # Dashboard overview blueprint (inline — small)
     from quart import Blueprint, redirect, render_template, url_for
@@ -217,5 +221,9 @@ def create_app(bot=None) -> Quart:
     app.register_blueprint(freestuff_bp, url_prefix="/freestuff")
     app.register_blueprint(streaming_bp, url_prefix="/streaming")
     app.register_blueprint(twitch_drops_bp, url_prefix="/twitch-drops")
+    app.register_blueprint(moderation_bp, url_prefix="/moderation")
+    app.register_blueprint(antiraid_bp, url_prefix="/antiraid")
+    app.register_blueprint(giveaways_bp, url_prefix="/giveaways")
+    app.register_blueprint(backup_bp, url_prefix="/backup")
 
     return app

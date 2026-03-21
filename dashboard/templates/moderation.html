@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Moderation{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Moderation</h1>
+    <p>View warnings and moderation logs per server.</p>
+</div>
+
+<div class="server-grid">
+    {% for guild in guilds %}
+    <a href="{{ url_for('moderation.moderation_guild', guild_id=guild.id) }}" class="grid-link">
+        <div class="card server-card">
+            {% if guild.icon %}
+            <img src="{{ guild.icon.url }}" alt="">
+            {% else %}
+            <div class="server-icon-fallback">{{ guild.name[0] }}</div>
+            {% endif %}
+            <div class="server-info">
+                <h3>{{ guild.name }}</h3>
+                <p>
+                    {% set wc = warning_counts.get(guild.id, 0) %}
+                    {% if wc > 0 %}
+                    <span class="badge badge-warning">{{ wc }} warn{{ 's' if wc != 1 }}</span>
+                    {% else %}
+                    <span class="badge badge-muted">No warnings</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

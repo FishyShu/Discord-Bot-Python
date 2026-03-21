@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Giveaways — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <a href="{{ url_for('giveaways.giveaways_list') }}" class="btn btn-sm btn-secondary mb-1">← Back</a>
+    <h1>{{ guild.name }} — Giveaways</h1>
+</div>
+
+<!-- Active Giveaways -->
+<div class="card mt-2">
+    <h3>Active Giveaways</h3>
+    {% if active %}
+    <div class="table-wrap mt-1">
+        <table>
+            <thead>
+                <tr>
+                    <th>#ID</th>
+                    <th>Prize</th>
+                    <th>Ends</th>
+                    <th>Winners</th>
+                    <th>Channel</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for g in active %}
+            <tr>
+                <td class="td-muted">#{{ g.id }}</td>
+                <td>{{ g.prize }}</td>
+                <td class="td-muted">{{ g.ends_at[:16].replace('T', ' ') if g.ends_at else '—' }}</td>
+                <td>{{ g.winner_count }}</td>
+                <td><code>#{{ g.channel_id }}</code></td>
+                <td>
+                    <form method="POST" action="{{ url_for('giveaways.end_giveaway', guild_id=guild.id, giveaway_id=g.id) }}">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('End this giveaway early?')">End Early</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted mt-1">No active giveaways.</p>
+    {% endif %}
+</div>
+
+<!-- Past Giveaways -->
+{% if past %}
+<div class="card mt-2">
+    <h3>Past Giveaways</h3>
+    <div class="table-wrap mt-1">
+        <table>
+            <thead>
+                <tr>
+                    <th>#ID</th>
+                    <th>Prize</th>
+                    <th>Ended</th>
+                    <th>Winners</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for g in past %}
+            <tr>
+                <td class="td-muted">#{{ g.id }}</td>
+                <td>{{ g.prize }}</td>
+                <td class="td-muted">{{ g.ends_at[:10] if g.ends_at else '—' }}</td>
+                <td>
+                    {% set winners = g.winners | from_json_or_empty %}
+                    {% if winners %}
+                    {{ winners | join(', ') }}
+                    {% else %}
+                    <span class="text-muted">None</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
