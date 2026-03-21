@@ -9,6 +9,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from utils.console import setup_logging, print_banner
+
+setup_logging()
+log = logging.getLogger("bot")
+
 # Ensure ffmpeg is on PATH (winget installs it outside the default PATH)
 _ffmpeg_matches = glob.glob(
     os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Packages", "Gyan.FFmpeg*", "ffmpeg*", "bin")
@@ -17,9 +22,6 @@ for _p in _ffmpeg_matches:
     if os.path.isfile(os.path.join(_p, "ffmpeg.exe")) and _p not in os.environ.get("PATH", ""):
         os.environ["PATH"] = _p + os.pathsep + os.environ.get("PATH", "")
         break
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-log = logging.getLogger("bot")
 
 # Refuse to start with default secrets unless explicitly allowed (dev mode)
 _default_pw = os.getenv("DASHBOARD_PASSWORD", "") in ("change-me", "")
@@ -41,6 +43,7 @@ if not _allow_defaults and os.getenv("_HTTPS_WARNED") != "1":
     )
 
 BOT_VERSION = "1.2.3"
+print_banner(BOT_VERSION)
 
 
 class MusicBot(commands.Bot):
@@ -78,10 +81,16 @@ class MusicBot(commands.Bot):
             log.info("Skipping command sync (set SYNC_COMMANDS=1 to sync)")
 
     async def on_ready(self):
-        log.info("Logged in as %s (ID: %s)", self.user, self.user.id)
+        from utils.console import BRIGHT_GREEN, BRIGHT_MAGENTA, BRIGHT_YELLOW, BRIGHT_CYAN, DIM, RESET, _sparkle
+        log.info("%s%s%s logged in as %s%s%s (ID: %s)",
+                 BRIGHT_MAGENTA, _sparkle(), RESET,
+                 BRIGHT_GREEN, self.user, RESET, self.user.id)
         for guild in self.guilds:
-            log.info("  - %s (ID: %s)", guild.name, guild.id)
-        log.info("Connected to %d server(s)", len(self.guilds))
+            log.info("  %s❯%s %s%s%s %s(%s)%s",
+                     BRIGHT_CYAN, RESET,
+                     BRIGHT_YELLOW, guild.name, RESET,
+                     DIM, guild.id, RESET)
+        log.info("%s✦ Connected to %d server(s)%s", BRIGHT_GREEN, len(self.guilds), RESET)
 
 
 
