@@ -40,6 +40,8 @@
                         {% endif %}
                         {% if cmd.use_regex %}
                             <span class="badge badge-warning">regex</span>
+                        {% elif cmd.match_mode and cmd.match_mode != 'contains' %}
+                            <span class="badge badge-warning">{{ cmd.match_mode | replace('_', ' ') }}</span>
                         {% endif %}
                     </td>
                     <td><strong>{{ cmd.usage_count|default(0) }}</strong></td>

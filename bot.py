@@ -41,7 +41,7 @@ class MusicBot(commands.Bot):
             "cogs.leveling", "cogs.tts",
             "cogs.soundboard", "cogs.autorole",
             "cogs.freestuff", "cogs.streaming",
-            "cogs.twitch_drops",
+            "cogs.twitch_drops", "cogs.voice_separate",
         ]
         for ext in cog_extensions:
             try:

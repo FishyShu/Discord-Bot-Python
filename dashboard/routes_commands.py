@@ -53,6 +53,7 @@ async def command_new():
         response_image_url = form.get("response_image_url", "").strip() or None
         priority = int(form.get("priority", 0) or 0)
         no_prefix = "no_prefix" in form
+        match_mode = form.get("match_mode", "contains") or "contains"
 
         await db.create_command(
             guild_id=guild_id,
@@ -82,6 +83,7 @@ async def command_new():
             response_image_url=response_image_url,
             priority=priority,
             no_prefix=no_prefix,
+            match_mode=match_mode,
         )
         await _refresh_cog_cache()
         await flash("Command created.", "success")
@@ -144,6 +146,7 @@ async def command_edit(cmd_id: int):
         response_image_url = form.get("response_image_url", "").strip() or None
         priority = int(form.get("priority", 0) or 0)
         no_prefix = "no_prefix" in form
+        match_mode = form.get("match_mode", "contains") or "contains"
 
         await db.update_command(
             cmd_id,
@@ -174,6 +177,7 @@ async def command_edit(cmd_id: int):
             response_image_url=response_image_url,
             priority=priority,
             no_prefix=no_prefix,
+            match_mode=match_mode,
         )
         await _refresh_cog_cache()
         await flash("Command updated.", "success")

@@ -157,6 +157,18 @@ class CustomCommands(commands.Cog):
         single = cmd.get("trigger_pattern", "")
         return [single] if single else []
 
+    @staticmethod
+    def _is_safe_regex(pattern: str, max_length: int = 200) -> bool:
+        """Reject regex patterns that are likely to cause catastrophic backtracking."""
+        if len(pattern) > max_length:
+            return False
+        # Reject nested quantifiers like (a+)+, (a*)+, (a+)*, etc.
+        if re.search(r'[+*]\)+[+*?]', pattern):
+            return False
+        if re.search(r'[+*]\}+[+*?]', pattern):
+            return False
+        return True
+
     def _get_compiled_regex(self, cmd: dict) -> list[re.Pattern]:
         """Get compiled regex patterns for a command, using cache."""
         cmd_id = cmd["id"]
@@ -165,6 +177,9 @@ class CustomCommands(commands.Cog):
         patterns = self._get_trigger_patterns(cmd)
         compiled = []
         for p in patterns:
+            if not self._is_safe_regex(p):
+                log.warning("Rejected unsafe regex pattern for cmd %d: %s", cmd_id, p)
+                continue
             try:
                 compiled.append(re.compile(p, re.IGNORECASE))
             except re.error:
@@ -173,7 +188,7 @@ class CustomCommands(commands.Cog):
         return compiled
 
     def _matches_triggers(self, cmd: dict, content: str) -> bool:
-        """Check if content matches any trigger pattern (regex or substring)."""
+        """Check if content matches any trigger pattern (regex, substring, or match mode)."""
         use_regex = bool(cmd.get("use_regex", 0))
         if use_regex:
             compiled = self._get_compiled_regex(cmd)
@@ -181,7 +196,25 @@ class CustomCommands(commands.Cog):
         else:
             patterns = self._get_trigger_patterns(cmd)
             content_lower = content.lower()
-            return any(p.lower() in content_lower for p in patterns)
+            match_mode = cmd.get("match_mode", "contains") or "contains"
+            for p in patterns:
+                p_lower = p.lower()
+                if match_mode == "contains":
+                    if p_lower in content_lower:
+                        return True
+                elif match_mode == "starts_with":
+                    if content_lower.startswith(p_lower):
+                        return True
+                elif match_mode == "ends_with":
+                    if content_lower.endswith(p_lower):
+                        return True
+                elif match_mode == "exact":
+                    if content_lower == p_lower:
+                        return True
+                elif match_mode == "word":
+                    if re.search(r'\b' + re.escape(p_lower) + r'\b', content_lower):
+                        return True
+            return False
 
     async def _apply_reactions(self, message: discord.Message, cmd: dict):
         """React to the triggering message with configured emojis."""
@@ -226,7 +259,7 @@ class CustomCommands(commands.Cog):
                 except discord.HTTPException:
                     pass
             elif action == "timeout":
-                seconds = int(value) if value else 60
+                seconds = min(int(value) if value else 60, 2_419_200)  # Cap at 28 days (Discord max)
                 await member.timeout(timedelta(seconds=seconds), reason="Auto-reply mod action")
             elif action == "add_role":
                 role = guild.get_role(int(value))

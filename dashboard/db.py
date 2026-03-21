@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS custom_commands (
     attachment_path    TEXT,
     embed_image_path   TEXT,
     embed_thumbnail_path TEXT,
+    match_mode  TEXT NOT NULL DEFAULT 'contains',
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -210,6 +211,7 @@ async def init_db():
             ("response_image_url", "TEXT"),
             ("priority", "INTEGER DEFAULT 0"),
             ("no_prefix", "INTEGER DEFAULT 0"),
+            ("match_mode", "TEXT DEFAULT 'contains'"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE custom_commands ADD COLUMN {col} {definition}")
@@ -297,7 +299,8 @@ async def create_command(*, guild_id: Optional[str], name: str, type: str = "tex
                          mod_action_value: Optional[str] = None,
                          response_image_url: Optional[str] = None,
                          priority: int = 0,
-                         no_prefix: bool = False) -> int:
+                         no_prefix: bool = False,
+                         match_mode: str = "contains") -> int:
     async with _connect() as db:
         cursor = await db.execute(
             """INSERT INTO custom_commands
@@ -307,15 +310,15 @@ async def create_command(*, guild_id: Optional[str], name: str, type: str = "tex
                 attachment_path, embed_image_path, embed_thumbnail_path,
                 use_regex, trigger_patterns, reaction_emojis, auto_delete_seconds,
                 delete_trigger, mod_action, mod_action_value, response_image_url, priority,
-                no_prefix)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                no_prefix, match_mode)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (guild_id, name, type, trigger_pattern, response_text, embed_json,
              int(enabled), cooldown, required_role_id, int(tts),
              int(filter_has_link), int(filter_has_file), int(filter_has_emoji),
              int(filter_has_role_mention), attachment_path, embed_image_path,
              embed_thumbnail_path, int(use_regex), trigger_patterns, reaction_emojis,
              auto_delete_seconds, int(delete_trigger), mod_action, mod_action_value,
-             response_image_url, priority, int(no_prefix)),
+             response_image_url, priority, int(no_prefix), match_mode),
         )
         await db.commit()
         return cursor.lastrowid
@@ -338,7 +341,7 @@ async def update_command(cmd_id: int, **kwargs) -> bool:
                "embed_thumbnail_path", "use_regex", "trigger_patterns",
                "reaction_emojis", "auto_delete_seconds", "delete_trigger",
                "mod_action", "mod_action_value", "response_image_url", "priority",
-               "no_prefix"}
+               "no_prefix", "match_mode"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         return False
