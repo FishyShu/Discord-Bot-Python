@@ -21,7 +21,7 @@ for _p in _ffmpeg_matches:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 log = logging.getLogger("bot")
 
-BOT_VERSION = "1.2.1"
+BOT_VERSION = "1.2.2"
 
 
 class MusicBot(commands.Bot):
@@ -53,7 +53,7 @@ class MusicBot(commands.Bot):
 
         if os.getenv("SYNC_COMMANDS", "0") == "1":
             synced = await self.tree.sync()
-            log.info("Synced %d slash commands", len(synced))
+            log.info("Global sync: %d slash commands", len(synced))
         else:
             log.info("Skipping command sync (set SYNC_COMMANDS=1 to sync)")
 
@@ -62,6 +62,16 @@ class MusicBot(commands.Bot):
         for guild in self.guilds:
             log.info("  - %s (ID: %s)", guild.name, guild.id)
         log.info("Connected to %d server(s)", len(self.guilds))
+
+        # Guild-specific sync for instant propagation (global sync can take up to 1h)
+        if os.getenv("SYNC_COMMANDS", "0") == "1":
+            for guild in self.guilds:
+                try:
+                    self.tree.copy_global_to(guild=guild)
+                    guild_synced = await self.tree.sync(guild=guild)
+                    log.info("Guild sync: %d commands → %s", len(guild_synced), guild.name)
+                except discord.HTTPException as e:
+                    log.warning("Guild sync failed for %s: %s", guild.name, e)
 
 
 async def run_dashboard(bot):
