@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🤖 Claude_Code Discord Bot
+# 🤖 Discord Bot
 
 **A feature-rich, self-hosted Discord bot with a web dashboard**
 
