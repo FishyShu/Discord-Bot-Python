@@ -69,11 +69,20 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Tone</label>
-                <select name="tone" class="form-control">
-                    {% for t in ['casual', 'professional', 'friendly', 'concise', 'humorous'] %}
-                    <option value="{{ t }}" {% if cfg.get('tone', 'casual') == t %}selected{% endif %}>{{ t.capitalize() }}</option>
+                <select name="tone" class="form-control" id="tone_select" onchange="onToneChange(this.value)">
+                    {% set tone_options = [('casual','Casual — relaxed, everyday language'),('professional','Professional — formal and precise'),('friendly','Friendly — warm, upbeat, approachable'),('concise','Concise — direct, minimal words'),('humorous','Humorous — witty and playful'),('custom','Custom…')] %}
+                    {% set cur_tone = cfg.get('tone','casual') %}
+                    {% for val, lbl in tone_options %}
+                    <option value="{{ val }}" {% if cur_tone == val or (val == 'custom' and cur_tone not in ['casual','professional','friendly','concise','humorous']) %}selected{% endif %}>{{ lbl }}</option>
                     {% endfor %}
                 </select>
+                <input type="text" name="tone_custom" id="tone_custom" class="form-control" style="margin-top:.4rem;display:none;"
+                       value="{% if cur_tone not in ['casual','professional','friendly','concise','humorous'] %}{{ cur_tone }}{% endif %}"
+                       placeholder="e.g. sarcastic, poetic, pirate-like…">
+                <p class="form-hint" style="margin-top:.35rem;">
+                    Tone adjusts the <em>style</em> of every reply. For character presets, <strong>Casual</strong> is usually best — other tones can clash with the preset's personality.
+                    Use <strong>Custom</strong> to enter any tone you like.
+                </p>
             </div>
         </div>
 
@@ -273,6 +282,22 @@
 </style>
 
 <script>
+function onToneChange(val) {
+    const customInput = document.getElementById('tone_custom');
+    customInput.style.display = val === 'custom' ? '' : 'none';
+}
+// Hide custom input if not custom on load
+(function() { onToneChange(document.getElementById('tone_select').value); })();
+
+// Before submit: if custom tone, override the select value with custom text
+document.getElementById('ai-edit-form').addEventListener('submit', function() {
+    const sel = document.getElementById('tone_select');
+    if (sel.value === 'custom') {
+        const custom = document.getElementById('tone_custom').value.trim();
+        if (custom) sel.value = custom;
+    }
+});
+
 function showPersonalityPanel(mode) {
     document.querySelectorAll('.personality-panel').forEach(p => p.style.display = 'none');
     const el = document.getElementById('panel_' + mode);
