@@ -57,6 +57,11 @@ class TTS(commands.Cog):
         text: str,
         lang: Optional[app_commands.Choice[str]] = None,
     ):
+        cfg = await db.get_tts_config(str(interaction.guild_id)) or {}
+        if not cfg.get("tts_enabled", True):
+            await interaction.response.send_message("TTS is disabled in this server.", ephemeral=True)
+            return
+
         vc = await self._ensure_voice(interaction)
         if vc is None:
             return

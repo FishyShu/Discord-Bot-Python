@@ -29,23 +29,39 @@
         </div>
 
         <div class="form-group mt-1">
-            <label>Mass-join threshold (joins / 10s)</label>
-            <input type="number" name="mass_join_threshold" class="input" value="{{ cfg.get('mass_join_threshold', 10) }}" min="1" max="100">
+            <label class="toggle-label">
+                <input type="checkbox" name="mass_join_enabled" class="toggle-input" {% if cfg.get('mass_join_enabled', 1) %}checked{% endif %}>
+                <span class="toggle-track"></span>
+                Mass-join detection
+            </label>
+            <input type="number" name="mass_join_threshold" class="input mt-1" value="{{ cfg.get('mass_join_threshold', 10) }}" min="1" max="100" placeholder="Threshold (joins / 10s)">
         </div>
 
         <div class="form-group mt-1">
-            <label>Minimum account age (days)</label>
-            <input type="number" name="new_account_age" class="input" value="{{ cfg.get('new_account_age', 7) }}" min="0" max="365">
+            <label class="toggle-label">
+                <input type="checkbox" name="new_account_enabled" class="toggle-input" {% if cfg.get('new_account_enabled') %}checked{% endif %}>
+                <span class="toggle-track"></span>
+                New account detection
+            </label>
+            <input type="number" name="new_account_days" class="input mt-1" value="{{ cfg.get('new_account_days', 7) }}" min="0" max="365" placeholder="Min account age (days)">
         </div>
 
         <div class="form-group mt-1">
-            <label>Mention spam threshold (mentions / message)</label>
-            <input type="number" name="mention_spam_threshold" class="input" value="{{ cfg.get('mention_spam_threshold', 5) }}" min="1" max="50">
+            <label class="toggle-label">
+                <input type="checkbox" name="mention_spam_enabled" class="toggle-input" {% if cfg.get('mention_spam_enabled', 1) %}checked{% endif %}>
+                <span class="toggle-track"></span>
+                Mention spam detection
+            </label>
+            <input type="number" name="mention_spam_threshold" class="input mt-1" value="{{ cfg.get('mention_spam_threshold', 5) }}" min="1" max="50" placeholder="Max mentions per message">
         </div>
 
         <div class="form-group mt-1">
-            <label>Message spam threshold (messages / 5s)</label>
-            <input type="number" name="message_spam_threshold" class="input" value="{{ cfg.get('message_spam_threshold', 10) }}" min="1" max="100">
+            <label class="toggle-label">
+                <input type="checkbox" name="message_spam_enabled" class="toggle-input" {% if cfg.get('message_spam_enabled', 1) %}checked{% endif %}>
+                <span class="toggle-track"></span>
+                Message spam detection
+            </label>
+            <input type="number" name="message_spam_threshold" class="input mt-1" value="{{ cfg.get('message_spam_threshold', 8) }}" min="1" max="100" placeholder="Max messages / 5s">
         </div>
 
         <button type="submit" class="btn btn-primary mt-2">Save Settings</button>

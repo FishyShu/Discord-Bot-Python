@@ -13,6 +13,57 @@ from discord.ext import commands
 
 from dashboard import db
 
+PER_PAGE = 10
+
+
+class LeaderboardView(discord.ui.View):
+    def __init__(self, entries: list[dict], guild: discord.Guild):
+        super().__init__(timeout=120)
+        self.entries = entries
+        self.guild = guild
+        self.page = 0
+        self._update_buttons()
+
+    @property
+    def total_pages(self) -> int:
+        return max(1, -(-len(self.entries) // PER_PAGE))
+
+    def build_embed(self) -> discord.Embed:
+        start = self.page * PER_PAGE
+        page_entries = self.entries[start:start + PER_PAGE]
+        lines = []
+        for i, entry in enumerate(page_entries, start + 1):
+            member = self.guild.get_member(int(entry["user_id"]))
+            name = str(member) if member else f"User {entry['user_id']}"
+            lines.append(f"**#{i}** {name} — Level {entry['level']} ({entry['xp']:,} XP)")
+        embed = discord.Embed(
+            title=f"{self.guild.name} Leaderboard",
+            description="\n".join(lines),
+            color=0xF39C12,
+        )
+        embed.set_footer(text=f"Page {self.page + 1}/{self.total_pages} | {len(self.entries)} members")
+        return embed
+
+    def _update_buttons(self):
+        self.prev_btn.disabled = self.page <= 0
+        self.next_btn.disabled = self.page >= self.total_pages - 1
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary)
+    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.page = max(0, self.page - 1)
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.page = min(self.total_pages - 1, self.page + 1)
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+
 log = logging.getLogger(__name__)
 
 
@@ -313,23 +364,13 @@ class Leveling(commands.Cog):
     @app_commands.command(name="leaderboard", description="Show the server XP leaderboard")
     async def leaderboard(self, interaction: discord.Interaction):
         gid = str(interaction.guild_id)
-        lb = await db.get_xp_leaderboard(gid, limit=10)
+        lb = await db.get_xp_leaderboard(gid, limit=200)
         if not lb:
             await interaction.response.send_message("No XP data yet!", ephemeral=True)
             return
 
-        lines = []
-        for i, entry in enumerate(lb, 1):
-            user = interaction.guild.get_member(int(entry["user_id"]))
-            name = str(user) if user else f"User {entry['user_id']}"
-            lines.append(f"**#{i}** {name} — Level {entry['level']} ({entry['xp']:,} XP)")
-
-        embed = discord.Embed(
-            title=f"{interaction.guild.name} Leaderboard",
-            description="\n".join(lines),
-            color=0xF39C12,
-        )
-        await interaction.response.send_message(embed=embed)
+        view = LeaderboardView(lb, interaction.guild)
+        await interaction.response.send_message(embed=view.build_embed(), view=view)
 
 
     @commands.Cog.listener()

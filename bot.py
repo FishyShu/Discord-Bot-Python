@@ -21,7 +21,7 @@ for _p in _ffmpeg_matches:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 log = logging.getLogger("bot")
 
-BOT_VERSION = "1.2.2"
+BOT_VERSION = "1.2.3"
 
 
 class MusicBot(commands.Bot):

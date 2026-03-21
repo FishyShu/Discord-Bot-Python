@@ -45,11 +45,15 @@ async def antiraid_save(guild_id: int):
     await db.upsert_antiraid_config(
         str(guild_id),
         enabled=int("enabled" in form),
-        action=form.get("action", "kick"),
+        action=form.get("action", "timeout"),
+        mass_join_enabled=int("mass_join_enabled" in form),
         mass_join_threshold=int(form.get("mass_join_threshold") or 10),
-        new_account_age=int(form.get("new_account_age") or 7),
+        new_account_enabled=int("new_account_enabled" in form),
+        new_account_days=int(form.get("new_account_days") or 7),
+        mention_spam_enabled=int("mention_spam_enabled" in form),
         mention_spam_threshold=int(form.get("mention_spam_threshold") or 5),
-        message_spam_threshold=int(form.get("message_spam_threshold") or 10),
+        message_spam_enabled=int("message_spam_enabled" in form),
+        message_spam_threshold=int(form.get("message_spam_threshold") or 8),
     )
     await flash("Anti-raid settings saved.", "success")
     return redirect(url_for("antiraid.antiraid_edit", guild_id=guild_id))

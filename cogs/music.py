@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Optional
 
+import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -682,6 +683,78 @@ class Music(commands.Cog):
                 f"Invalid position(s). Queue has {len(player.queue)} tracks.",
                 ephemeral=True,
             )
+
+    @app_commands.command(name="lyrics", description="Show lyrics for the current track or a search query")
+    @app_commands.describe(query="Artist and title, e.g. 'Never Gonna Give You Up Rick Astley' (optional if playing)")
+    async def lyrics(self, interaction: discord.Interaction, query: Optional[str] = None):
+        await interaction.response.defer()
+
+        artist, title = None, None
+
+        if query:
+            # Try splitting "Title - Artist" or "Artist - Title" convention
+            if " - " in query:
+                parts = query.split(" - ", 1)
+                artist, title = parts[0].strip(), parts[1].strip()
+            else:
+                title = query.strip()
+        else:
+            # Auto-populate from currently playing track
+            player = await self.get_player(interaction.guild.id)
+            if not player.current:
+                await interaction.followup.send("Nothing is playing. Provide a `query` to search.", ephemeral=True)
+                return
+            track_title = player.current.title
+            # Many YouTube titles are "Artist - Title"
+            if " - " in track_title:
+                parts = track_title.split(" - ", 1)
+                artist, title = parts[0].strip(), parts[1].strip()
+            else:
+                title = track_title
+
+        if not artist:
+            await interaction.followup.send(
+                f"Could not determine the artist for **{title}**. "
+                "Try `/lyrics Artist - Title` (e.g. `/lyrics Rick Astley - Never Gonna Give You Up`).",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            url = f"https://api.lyrics.ovh/v1/{artist}/{title}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 404:
+                        await interaction.followup.send(
+                            f"No lyrics found for **{title}**{f' by {artist}' if artist else ''}.",
+                            ephemeral=True,
+                        )
+                        return
+                    if resp.status != 200:
+                        await interaction.followup.send("Lyrics service unavailable. Try again later.", ephemeral=True)
+                        return
+                    data = await resp.json()
+        except Exception as exc:
+            log.warning("Lyrics fetch failed: %s", exc)
+            await interaction.followup.send("Could not fetch lyrics right now.", ephemeral=True)
+            return
+
+        lyrics_text = data.get("lyrics", "").strip()
+        if not lyrics_text:
+            await interaction.followup.send("No lyrics found.", ephemeral=True)
+            return
+
+        truncated = len(lyrics_text) > 1800
+        display = lyrics_text[:1800] + ("\n..." if truncated else "")
+
+        embed = discord.Embed(
+            title=f"Lyrics — {title}{f' by {artist}' if artist else ''}",
+            description=display,
+            color=0x1DB954,
+        )
+        if truncated:
+            embed.set_footer(text="Lyrics truncated to fit Discord's limit.")
+        await interaction.followup.send(embed=embed)
 
     # --- Config commands ---
 
