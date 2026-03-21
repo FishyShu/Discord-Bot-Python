@@ -135,6 +135,17 @@
                 </a>
             </div>
 
+            <!-- AI -->
+            <div class="sidebar-category" data-category="ai">
+                <span>AI</span>
+                <span class="chevron">&#9660;</span>
+            </div>
+            <div class="sidebar-section" data-section="ai">
+                <a href="{{ url_for('ai.ai_list') }}" class="sidebar-link {% if '/ai' in request.path %}active{% endif %}">
+                    <span class="icon">&#129302;</span> AI Chatbot
+                </a>
+            </div>
+
             <!-- UTILITIES -->
             <div class="sidebar-category" data-category="utilities">
                 <span>Utilities</span>

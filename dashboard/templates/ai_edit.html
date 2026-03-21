@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% block title %}AI Config — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>AI Config — {{ guild.name }}</h1>
+    <div class="page-actions">
+        <a href="{{ url_for('ai.ai_logs', guild_id=guild.id) }}" class="btn btn-secondary">Logs</a>
+        <a href="{{ url_for('ai.ai_memory', guild_id=guild.id) }}" class="btn btn-secondary">Memory</a>
+        <a href="{{ url_for('ai.ai_list') }}" class="btn btn-secondary">Back</a>
+    </div>
+</div>
+
+<form method="POST" id="ai-edit-form">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+    {# ── Personality ─────────────────────────────────────────────────── #}
+    <div class="card" style="margin-bottom:1.5rem;">
+        <h3 class="card-title">Personality</h3>
+
+        <div class="form-group">
+            <label class="form-label">Mode</label>
+            <div class="btn-group">
+                {% for mode_val, mode_label in [('manual','Manual'),('preset','Preset'),('auto','Auto-generate')] %}
+                <input type="radio" class="btn-check" name="personality_mode" id="pm_{{ mode_val }}"
+                       value="{{ mode_val }}"
+                       {% if cfg.get('personality_mode','manual') == mode_val %}checked{% endif %}
+                       onchange="showPersonalityPanel('{{ mode_val }}')">
+                <label class="btn-outline-secondary" for="pm_{{ mode_val }}">{{ mode_label }}</label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div id="panel_manual" class="personality-panel" style="display:none;">
+            <div class="form-group">
+                <label class="form-label">System Prompt</label>
+                <textarea name="system_prompt" class="form-control" rows="4">{{ cfg.get('system_prompt', 'You are a helpful assistant.') }}</textarea>
+            </div>
+        </div>
+
+        <div id="panel_preset" class="personality-panel" style="display:none;">
+            <div class="form-group">
+                <label class="form-label">Choose a preset</label>
+                <div class="preset-grid">
+                    {% for key in presets %}
+                    <label class="preset-card {% if cfg.get('personality_preset','helper') == key %}active{% endif %}">
+                        <input type="radio" name="personality_preset" value="{{ key }}"
+                               {% if cfg.get('personality_preset','helper') == key %}checked{% endif %}>
+                        {{ preset_labels[key] }}
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div id="panel_auto" class="personality-panel" style="display:none;">
+            <div class="form-group">
+                <label class="form-label">Describe your bot in a sentence</label>
+                <input type="text" name="personality_auto_prompt" class="form-control"
+                       value="{{ cfg.get('personality_auto_prompt','') }}"
+                       placeholder="e.g. a grumpy old wizard who reluctantly helps adventurers">
+                <p class="form-hint">The AI will generate a system prompt from this description when you save.</p>
+            </div>
+        </div>
+
+        <div class="form-row" style="margin-top:.75rem;">
+            <div class="form-group">
+                <label class="form-label">Language</label>
+                <input type="text" name="language" class="form-control" value="{{ cfg.get('language', 'auto') }}" placeholder="auto">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tone</label>
+                <select name="tone" class="form-control">
+                    {% for t in ['casual', 'professional', 'friendly', 'concise', 'humorous'] %}
+                    <option value="{{ t }}" {% if cfg.get('tone', 'casual') == t %}selected{% endif %}>{{ t.capitalize() }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="toggle-label">
+                <input type="checkbox" class="toggle-input" name="thinking_enabled"
+                       {% if cfg.get('thinking_enabled') %}checked{% endif %}>
+                <span class="toggle-track"></span>
+                Enable extended thinking (Gemini only)
+            </label>
+        </div>
+    </div>
+
+    {# ── Behaviour ───────────────────────────────────────────────────── #}
+    <div class="card" style="margin-bottom:1.5rem;">
+        <h3 class="card-title">Behaviour</h3>
+
+        <div class="form-group">
+            <label class="form-label">Response Length</label>
+            <div class="btn-group">
+                {% for val, lbl in [('short','Short'),('medium','Medium'),('long','Long')] %}
+                <input type="radio" class="btn-check" name="response_length" id="rl_{{ val }}" value="{{ val }}"
+                       {% if cfg.get('response_length','medium') == val %}checked{% endif %}>
+                <label class="btn-outline-secondary" for="rl_{{ val }}">{{ lbl }}</label>
+                {% endfor %}
+            </div>
+            <p class="form-hint">Short = 1–3 sentences &nbsp;·&nbsp; Medium = short paragraph &nbsp;·&nbsp; Long = detailed</p>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Markdown Formatting</label>
+            <div class="btn-group">
+                {% set cur_md = 'off' if not cfg.get('markdown_enabled', 1) else cfg.get('markdown_frequency','sometimes') %}
+                {% for val, lbl in [('off','Off'),('sometimes','Sometimes'),('often','Often')] %}
+                <input type="radio" class="btn-check" name="markdown" id="md_{{ val }}" value="{{ val }}"
+                       {% if cur_md == val %}checked{% endif %}>
+                <label class="btn-outline-secondary" for="md_{{ val }}">{{ lbl }}</label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="form-row" style="margin-top:.5rem;">
+            <div class="form-group">
+                <label class="toggle-label">
+                    <input type="checkbox" class="toggle-input" name="emojis_enabled"
+                           {% if cfg.get('emojis_enabled', 1) %}checked{% endif %}>
+                    <span class="toggle-track"></span>
+                    Allow emojis in responses
+                </label>
+            </div>
+            <div class="form-group">
+                <label class="toggle-label">
+                    <input type="checkbox" class="toggle-input" name="mentions_enabled"
+                           {% if cfg.get('mentions_enabled', 0) %}checked{% endif %}>
+                    <span class="toggle-track"></span>
+                    Mention user on reply
+                </label>
+            </div>
+            <div class="form-group">
+                <label class="toggle-label">
+                    <input type="checkbox" class="toggle-input" name="reply_mode"
+                           {% if cfg.get('reply_mode', 1) %}checked{% endif %}>
+                    <span class="toggle-track"></span>
+                    Use Discord quote-reply
+                </label>
+            </div>
+            <div class="form-group">
+                <label class="toggle-label">
+                    <input type="checkbox" class="toggle-input" name="show_typing"
+                           {% if cfg.get('show_typing', 1) %}checked{% endif %}>
+                    <span class="toggle-track"></span>
+                    Show typing indicator
+                </label>
+            </div>
+        </div>
+    </div>
+
+    {# ── Webhook Persona ─────────────────────────────────────────────── #}
+    <div class="card" style="margin-bottom:1.5rem;">
+        <h3 class="card-title">Webhook Persona</h3>
+        <p class="form-hint" style="margin-bottom:1rem;">
+            Send responses through a Discord webhook so they appear under a custom name and avatar.
+            Leave the URL blank to keep the existing value.
+        </p>
+        <div class="form-row">
+            <div class="form-group" style="flex:2;">
+                <label class="form-label">Webhook URL <span class="badge badge-secondary">Leave blank to keep existing</span></label>
+                <input type="password" name="webhook_url" class="form-control" placeholder="https://discord.com/api/webhooks/...">
+            </div>
+            <div class="form-group" style="flex:1;">
+                <label class="form-label">Display Name</label>
+                <input type="text" name="webhook_name" class="form-control"
+                       value="{{ cfg.get('webhook_name','Tagokura AI') }}" placeholder="Tagokura AI">
+            </div>
+        </div>
+        <div class="form-row" style="align-items:flex-end;">
+            <div class="form-group" style="flex:2;">
+                <label class="form-label">Avatar URL (optional)</label>
+                <input type="text" name="webhook_avatar" id="webhook_avatar_input" class="form-control"
+                       value="{{ cfg.get('webhook_avatar','') or '' }}" placeholder="https://..."
+                       oninput="updateAvatarPreview(this.value)">
+            </div>
+            <div class="form-group" style="flex:0 0 auto; padding-bottom:.1rem;">
+                <img id="avatar_preview"
+                     src="{{ cfg.get('webhook_avatar','') or '' }}"
+                     alt="Avatar preview"
+                     style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--border);display:{% if cfg.get('webhook_avatar') and cfg.get('webhook_avatar') != 'None' %}block{% else %}none{% endif %};">
+            </div>
+        </div>
+        {% if cfg.get('webhook_url') %}
+        <p class="form-hint" style="color:var(--success); margin-bottom:.75rem;">&#10003; Webhook active — name: <strong>{{ cfg.get('webhook_name','Tagokura AI') }}</strong></p>
+        <label class="toggle-label">
+            <input type="checkbox" class="toggle-input" name="webhook_clear">
+            <span class="toggle-track"></span>
+            Remove webhook persona
+        </label>
+        {% endif %}
+    </div>
+
+    {# ── Active Channels ──────────────────────────────────────────────── #}
+    <div class="card" style="margin-bottom:1.5rem;">
+        <h3 class="card-title">Active Channels</h3>
+        <p class="form-hint" style="margin-bottom:.75rem;">The bot will automatically respond in these channels. It also responds to @mentions everywhere.</p>
+        <div class="checkbox-grid">
+            {% for ch in channels %}
+            <label class="toggle-label" style="font-weight:400;">
+                <input type="checkbox" class="toggle-input" name="active_channels" value="{{ ch.id }}"
+                       {% if ch.id | string in active_channels %}checked{% endif %}>
+                <span class="toggle-track"></span>
+                #{{ ch.name }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    {# ── Blocklist ────────────────────────────────────────────────────── #}
+    <div class="card" style="margin-bottom:1.5rem;">
+        <h3 class="card-title">Blocklist</h3>
+        <p class="form-hint" style="margin-bottom:.75rem;">Comma-separated topics the AI will refuse to discuss.</p>
+        <div class="form-group">
+            <input type="text" name="blocklist" class="form-control"
+                   value="{{ blocklist | join(', ') }}"
+                   placeholder="e.g. violence, adult content, politics">
+        </div>
+    </div>
+
+    {# ── Premium API Key ──────────────────────────────────────────────── #}
+    <div class="card" style="margin-bottom:1.5rem;">
+        <h3 class="card-title">Premium API Key (optional)</h3>
+        <p class="form-hint" style="margin-bottom:1rem;">
+            Use your own API key to unlock premium models (Claude, GPT-4o, premium Gemini).
+            Requires <code>ENCRYPTION_KEY</code> in <code>.env</code>.
+        </p>
+        <div class="form-row">
+            <div class="form-group" style="flex:2;">
+                <label class="form-label">API Key <span class="badge badge-secondary">Leave blank to keep existing</span></label>
+                <input type="password" name="api_key" class="form-control" placeholder="sk-... or AIza...">
+            </div>
+            <div class="form-group" style="flex:1;">
+                <label class="form-label">Model</label>
+                <select name="model" class="form-control">
+                    <option value="">Default (gemini-2.0-flash-lite)</option>
+                    {% for m in models %}
+                    <option value="{{ m }}" {% if cfg.get('model') == m %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        {% if cfg.get('api_key') %}
+        <p class="form-hint" style="color:var(--success);">&#10003; A custom API key is currently stored.</p>
+        {% endif %}
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save Configuration</button>
+    </div>
+</form>
+
+<style>
+.preset-grid { display:flex; flex-wrap:wrap; gap:.5rem; }
+.preset-card {
+    display:flex; align-items:center; gap:.4rem;
+    padding:.45rem 1rem;
+    border:1px solid var(--border);
+    border-radius:6px; cursor:pointer;
+    font-size:.875rem; font-weight:500;
+    user-select:none; transition:border-color .15s, background .15s;
+}
+.preset-card input[type=radio] { display:none; }
+.preset-card.active,
+.preset-card:has(input:checked) {
+    border-color:var(--accent);
+    background:var(--accent-glow);
+    color:var(--accent);
+}
+.personality-panel { margin-top:.5rem; }
+</style>
+
+<script>
+function showPersonalityPanel(mode) {
+    document.querySelectorAll('.personality-panel').forEach(p => p.style.display = 'none');
+    const el = document.getElementById('panel_' + mode);
+    if (el) el.style.display = '';
+}
+
+document.querySelectorAll('.preset-card').forEach(card => {
+    card.addEventListener('click', () => {
+        document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+    });
+});
+
+function updateAvatarPreview(url) {
+    const img = document.getElementById('avatar_preview');
+    if (url) { img.src = url; img.style.display = 'block'; }
+    else img.style.display = 'none';
+}
+
+(function() {
+    const checked = document.querySelector('input[name="personality_mode"]:checked');
+    if (checked) showPersonalityPanel(checked.value);
+})();
+</script>
+{% endblock %}

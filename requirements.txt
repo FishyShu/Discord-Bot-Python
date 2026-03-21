@@ -1,4 +1,5 @@
 discord.py[voice]>=2.7.1
+aiohttp>=3.9.0
 yt-dlp>=2024.12.0
 spotipy>=2.24.0
 python-dotenv>=1.0.0
@@ -7,3 +8,12 @@ hypercorn>=0.17.0
 aiosqlite>=0.20.0
 gTTS>=2.5.0
 bcrypt>=4.0.0
+deep-translator>=1.11.0
+google-genai>=1.0.0
+cryptography>=42.0.0
+anthropic>=0.40.0
+openai>=1.50.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

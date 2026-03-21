@@ -73,6 +73,7 @@ def create_app(bot=None) -> Quart:
     from .routes_antiraid import antiraid_bp
     from .routes_giveaways import giveaways_bp
     from .routes_backup import backup_bp
+    from .routes_ai import ai_bp
 
     # Dashboard overview blueprint (inline — small)
     from quart import Blueprint, redirect, render_template, url_for
@@ -225,5 +226,6 @@ def create_app(bot=None) -> Quart:
     app.register_blueprint(antiraid_bp, url_prefix="/antiraid")
     app.register_blueprint(giveaways_bp, url_prefix="/giveaways")
     app.register_blueprint(backup_bp, url_prefix="/backup")
+    app.register_blueprint(ai_bp, url_prefix="/ai")
 
     return app

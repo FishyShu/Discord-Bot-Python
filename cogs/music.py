@@ -9,10 +9,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils.player import GuildMusicPlayer, LoopMode, TrackInfo
+from utils.player import GuildMusicPlayer, LoopMode, TrackInfo, SOURCE_BADGES
 from utils.youtube import extract_info, extract_playlist, is_youtube_playlist, search_youtube, get_stream_url, FFMPEG_OPTIONS
 from utils.spotify import is_spotify_url, get_tracks_from_url
 from utils.tidal import is_tidal_url, get_tracks_from_tidal_url
+from utils.audio_filters import AUDIO_FILTERS
 
 import functools
 
@@ -20,6 +21,21 @@ log = logging.getLogger(__name__)
 
 IDLE_TIMEOUT = 300  # 5 minutes
 MAX_QUEUE_SIZE = 500
+
+
+def _build_af(player: GuildMusicPlayer, track: TrackInfo) -> str:
+    """Build an FFmpeg -af filter string from active filter and crossfade settings."""
+    parts = []
+    if player.active_filter and player.active_filter != "none":
+        af = AUDIO_FILTERS.get(player.active_filter, "")
+        if af:
+            parts.append(af)
+    if player.crossfade > 0:
+        parts.append(f"afade=t=in:st=0:d={player.crossfade}")
+        if track.duration:
+            fade_out = max(0, int(track.duration) - player.crossfade)
+            parts.append(f"afade=t=out:st={fade_out}:d={player.crossfade}")
+    return ",".join(parts)
 
 
 class SearchSelect(discord.ui.Select):
@@ -54,6 +70,7 @@ class SearchSelect(discord.ui.Select):
             thumbnail=thumb,
             requester=interaction.user.display_name,
             stream_url=None,  # flat search results don't have stream URLs; resolved lazily
+            source="search",
         )
         player = await self.cog.get_player(interaction.guild.id)
         if len(player.queue) >= MAX_QUEUE_SIZE:
@@ -236,6 +253,56 @@ class QueueView(discord.ui.View):
             item.disabled = True
 
 
+class HistoryView(discord.ui.View):
+    """Paginated track history display."""
+
+    PER_PAGE = 10
+
+    def __init__(self, rows: list[dict]):
+        super().__init__(timeout=120)
+        self.rows = rows
+        self.page = 0
+        self._update_buttons()
+
+    @property
+    def total_pages(self) -> int:
+        return max(1, -(-len(self.rows) // self.PER_PAGE))
+
+    def build_embed(self) -> discord.Embed:
+        embed = discord.Embed(title="Track History", color=discord.Color.blurple())
+        start = self.page * self.PER_PAGE
+        page_rows = self.rows[start:start + self.PER_PAGE]
+        lines = []
+        for i, r in enumerate(page_rows):
+            badge = SOURCE_BADGES.get(r.get("source") or "", "")
+            date = (r.get("played_at") or "")[:16]
+            req = r.get("requester") or "unknown"
+            lines.append(f"`#{start + i + 1}` {badge} **{r['title']}** — {req} @ {date}")
+        embed.description = "\n".join(lines) if lines else "No history."
+        embed.set_footer(text=f"Page {self.page + 1}/{self.total_pages}")
+        return embed
+
+    def _update_buttons(self):
+        self.prev_btn.disabled = self.page <= 0
+        self.next_btn.disabled = self.page >= self.total_pages - 1
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary)
+    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.page = max(0, self.page - 1)
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.page = min(self.total_pages - 1, self.page + 1)
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+
+
 class Music(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -313,6 +380,8 @@ class Music(commands.Cog):
                 if fallback == "soundcloud":
                     sc_url = track.url.replace("ytsearch:", "scsearch:", 1)
                     stream_url = await get_stream_url(sc_url)
+                    if stream_url:
+                        track.source = "soundcloud"
             if stream_url is None:
                 if player.text_channel:
                     await player.text_channel.send(f"Could not get stream for **{track.title}**, skipping.")
@@ -321,15 +390,27 @@ class Music(commands.Cog):
             break  # got a valid stream, proceed to play
 
         track.stream_url = stream_url
-        source = discord.FFmpegPCMAudio(stream_url, **FFMPEG_OPTIONS)
-        source = discord.PCMVolumeTransformer(source, volume=player.volume)
+
+        # Build dynamic FFmpeg options with filters
+        af = _build_af(player, track)
+        ff_opts = dict(FFMPEG_OPTIONS)
+        if af:
+            ff_opts["options"] = f'-vn -af "{af}"'
+        audio_source = discord.FFmpegPCMAudio(stream_url, **ff_opts)
+        audio_source = discord.PCMVolumeTransformer(audio_source, volume=player.volume)
 
         def after_play(error):
             if error:
                 log.error("Playback error: %s", error)
             asyncio.run_coroutine_threadsafe(self._play_next(guild), self.bot.loop)
 
-        vc.play(source, after=after_play)
+        vc.play(audio_source, after=after_play)
+
+        # Log to track history (non-blocking)
+        from dashboard import db as _db
+        asyncio.create_task(_db.add_track_history(
+            str(guild.id), track.title, track.url, track.source, track.requester
+        ))
 
         if player.text_channel:
             # Disable buttons on old Now Playing message
@@ -347,6 +428,14 @@ class Music(commands.Cog):
                 embed.set_thumbnail(url=track.thumbnail)
             if track.requester:
                 embed.set_footer(text=f"Requested by {track.requester}")
+            badge = SOURCE_BADGES.get(track.source or "", "")
+            embed.add_field(
+                name="Source",
+                value=f"{badge} {(track.source or 'unknown').capitalize()}",
+                inline=True,
+            )
+            if player.active_filter and player.active_filter != "none":
+                embed.add_field(name="Filter", value=player.active_filter.capitalize(), inline=True)
             view = NowPlayingView(self, guild)
             # Update loop button label to reflect current state
             for item in view.children:
@@ -389,6 +478,7 @@ class Music(commands.Cog):
                     duration=entry.get("duration"),
                     thumbnail=entry.get("thumbnail"),
                     requester=interaction.user.display_name,
+                    source="youtube",
                 )
                 player.add(track)
                 tracks_added.append(track)
@@ -409,6 +499,7 @@ class Music(commands.Cog):
                     url=f"ytsearch:{st['query']}",
                     duration=st.get("duration"),
                     requester=interaction.user.display_name,
+                    source="spotify",
                 )
                 player.add(track)
                 tracks_added.append(track)
@@ -429,6 +520,7 @@ class Music(commands.Cog):
                     url=f"ytsearch:{tt['query']}",
                     duration=tt.get("duration"),
                     requester=interaction.user.display_name,
+                    source="tidal",
                 )
                 player.add(track)
                 tracks_added.append(track)
@@ -457,13 +549,16 @@ class Music(commands.Cog):
             if info is None:
                 await interaction.followup.send("No results found.", ephemeral=True)
                 return
+            _track_url = info.get("webpage_url") or info.get("original_url") or query
+            _src = "soundcloud" if "soundcloud.com" in query else "youtube"
             track = TrackInfo(
                 title=info.get("title", "Unknown"),
-                url=info.get("webpage_url") or info.get("original_url") or query,
+                url=_track_url,
                 duration=info.get("duration"),
                 thumbnail=info.get("thumbnail"),
                 requester=interaction.user.display_name,
                 stream_url=info.get("url"),
+                source=_src,
             )
             player.add(track)
             tracks_added.append(track)
@@ -590,6 +685,8 @@ class Music(commands.Cog):
             embed.set_thumbnail(url=t.thumbnail)
         if t.requester:
             embed.set_footer(text=f"Requested by {t.requester}")
+        badge = SOURCE_BADGES.get(t.source or "", "")
+        embed.add_field(name="Source", value=f"{badge} {(t.source or 'unknown').capitalize()}", inline=True)
         embed.add_field(name="Loop", value=player.loop_mode.value, inline=True)
         embed.add_field(name="Volume", value=f"{int(player.volume * 100)}%", inline=True)
         await interaction.response.send_message(embed=embed)
@@ -811,6 +908,84 @@ class Music(commands.Cog):
         embed.add_field(name="Default Volume", value=f"{volume}%")
         embed.add_field(name="Max Queue Size", value=max_queue)
         embed.add_field(name="Fallback Service", value=fallback.capitalize())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="history", description="Show recently played tracks")
+    async def history(self, interaction: discord.Interaction):
+        from dashboard import db
+        rows = await db.get_track_history(str(interaction.guild_id), limit=25)
+        if not rows:
+            await interaction.response.send_message("No track history yet.", ephemeral=True)
+            return
+        view = HistoryView(rows)
+        await interaction.response.send_message(embed=view.build_embed(), view=view)
+
+    @app_commands.command(name="crossfade", description="Set fade-in/out duration per track (0 = off)")
+    @app_commands.describe(seconds="Fade duration in seconds (0-5)")
+    async def crossfade(self, interaction: discord.Interaction,
+                        seconds: app_commands.Range[int, 0, 5]):
+        player = await self.get_player(interaction.guild.id)
+        player.crossfade = seconds
+        msg = f"Crossfade set to **{seconds}s**." if seconds > 0 else "Crossfade disabled."
+        await interaction.response.send_message(
+            embed=discord.Embed(description=msg, color=discord.Color.green())
+        )
+
+    # --- Filter commands ---
+
+    filter_group = app_commands.Group(name="filter", description="Audio filter presets")
+
+    @filter_group.command(name="set", description="Apply an audio filter preset")
+    @app_commands.describe(name="Filter name")
+    @app_commands.choices(name=[
+        app_commands.Choice(name=k.capitalize(), value=k) for k in AUDIO_FILTERS
+    ])
+    async def filter_set(self, interaction: discord.Interaction, name: app_commands.Choice[str]):
+        player = await self.get_player(interaction.guild.id)
+        player.active_filter = name.value
+        vc = interaction.guild.voice_client
+        if vc and (vc.is_playing() or vc.is_paused()) and player.current:
+            # Reinsert current track at front of queue and restart to apply filter
+            player.queue.insert(0, player.current)
+            player.current = None
+            vc.stop()
+            msg = f"Filter **{name.name}** applied — restarting track."
+        else:
+            msg = f"Filter **{name.name}** set — takes effect on next track."
+        await interaction.response.send_message(
+            embed=discord.Embed(description=msg, color=discord.Color.green())
+        )
+
+    @filter_group.command(name="clear", description="Remove the active audio filter")
+    async def filter_clear(self, interaction: discord.Interaction):
+        player = await self.get_player(interaction.guild.id)
+        player.active_filter = None
+        vc = interaction.guild.voice_client
+        if vc and (vc.is_playing() or vc.is_paused()) and player.current:
+            player.queue.insert(0, player.current)
+            player.current = None
+            vc.stop()
+            msg = "Filter cleared — restarting track."
+        else:
+            msg = "Filter cleared."
+        await interaction.response.send_message(
+            embed=discord.Embed(description=msg, color=discord.Color.orange())
+        )
+
+    @filter_group.command(name="list", description="List available audio filter presets")
+    async def filter_list(self, interaction: discord.Interaction):
+        player = await self.get_player(interaction.guild.id)
+        active = player.active_filter or "none"
+        lines = []
+        for k in AUDIO_FILTERS:
+            marker = "**" if k == active else ""
+            lines.append(f"{marker}`{k}`{marker}")
+        embed = discord.Embed(
+            title="Audio Filters",
+            description="\n".join(lines),
+            color=discord.Color.blurple(),
+        )
+        embed.set_footer(text=f"Active: {active}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @commands.Cog.listener()

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}AI Logs — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>AI Logs — {{ guild.name }}</h1>
+    <div class="page-actions">
+        <a href="{{ url_for('ai.ai_edit', guild_id=guild.id) }}" class="btn btn-secondary">Config</a>
+        <form method="POST" action="{{ url_for('ai.ai_logs_clear', guild_id=guild.id) }}" style="display:inline;">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Clear ALL logs for this server?')">Clear All</button>
+        </form>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+    <form method="GET" class="form-row" style="align-items:flex-end;gap:1rem;">
+        <div class="form-group" style="flex:1;">
+            <label class="form-label">Filter by User ID</label>
+            <input type="text" name="user_id" class="form-control" value="{{ user_filter }}" placeholder="Discord user ID">
+        </div>
+        <div class="form-group" style="flex:1;">
+            <label class="form-label">Filter by Channel</label>
+            <select name="channel_id" class="form-control">
+                <option value="">All channels</option>
+                {% for ch in channels %}
+                <option value="{{ ch.id }}" {% if channel_filter == ch.id | string %}selected{% endif %}>#{{ ch.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="margin-bottom:1rem;">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    {% if rows %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Role</th>
+                <th>User</th>
+                <th>Channel</th>
+                <th>Message</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td style="white-space:nowrap;">{{ (row.timestamp or '')[:16] }}</td>
+                <td>
+                    {% if row.role == 'user' %}
+                    <span class="badge badge-info">User</span>
+                    {% else %}
+                    <span class="badge badge-success">AI</span>
+                    {% endif %}
+                </td>
+                <td><code>{{ row.user_id }}</code></td>
+                <td>{% if row.channel_id %}<#{{ row.channel_id }}>{% else %}—{% endif %}</td>
+                <td style="max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.content }}">
+                    {{ row.content[:120] }}{% if row.content | length > 120 %}…{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="padding:1rem;color:var(--color-text-muted);">No conversation logs found.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+import hashlib
+import logging
+import random
+from typing import Optional
+
+import aiohttp
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+log = logging.getLogger(__name__)
+
+_8BALL_RESPONSES = [
+    "It is certain.", "It is decidedly so.", "Without a doubt.",
+    "Yes, definitely.", "You may rely on it.", "As I see it, yes.",
+    "Most likely.", "Outlook good.", "Yes.", "Signs point to yes.",
+    "Reply hazy, try again.", "Ask again later.", "Better not tell you now.",
+    "Cannot predict now.", "Concentrate and ask again.",
+    "Don't count on it.", "My reply is no.", "My sources say no.",
+    "Outlook not so good.", "Very doubtful.",
+]
+
+_ANIMAL_TYPES = ["dog", "cat", "fox", "panda", "koala", "bird"]
+
+
+class Fun(commands.Cog):
+    """Fun commands: memes, animals, 8ball, mock text, ship score."""
+
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @app_commands.command(name="meme", description="Fetch a random meme from Reddit")
+    async def meme(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("https://meme-api.com/gimme", timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status != 200:
+                        await interaction.followup.send("Failed to fetch a meme. Try again later.")
+                        return
+                    data = await resp.json()
+            embed = discord.Embed(title=data.get("title", "Meme"), color=0xFF6B35)
+            embed.set_image(url=data.get("url", ""))
+            embed.set_footer(text=f"r/{data.get('subreddit', '?')} • 👍 {data.get('ups', 0)}")
+            await interaction.followup.send(embed=embed)
+        except Exception as exc:
+            log.warning("Meme fetch failed: %s", exc)
+            await interaction.followup.send("Could not fetch a meme right now.")
+
+    @app_commands.command(name="animal", description="Fetch a cute animal image")
+    @app_commands.describe(animal="Type of animal")
+    @app_commands.choices(animal=[
+        app_commands.Choice(name=a.capitalize(), value=a) for a in _ANIMAL_TYPES
+    ])
+    async def animal(self, interaction: discord.Interaction, animal: str):
+        await interaction.response.defer()
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"https://some-random-api.com/animal/{animal}"
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status != 200:
+                        await interaction.followup.send("Could not fetch an image right now.")
+                        return
+                    data = await resp.json()
+            embed = discord.Embed(title=f"Here's a {animal}! 🐾", color=0x2ECC71)
+            embed.set_image(url=data.get("image", ""))
+            if data.get("fact"):
+                embed.set_footer(text=f"Fun fact: {data['fact'][:200]}")
+            await interaction.followup.send(embed=embed)
+        except Exception as exc:
+            log.warning("Animal fetch failed: %s", exc)
+            await interaction.followup.send("Could not fetch an animal image right now.")
+
+    @app_commands.command(name="8ball", description="Ask the magic 8-ball a question")
+    @app_commands.describe(question="Your question")
+    async def eightball(self, interaction: discord.Interaction, question: str):
+        response = random.choice(_8BALL_RESPONSES)
+        embed = discord.Embed(color=0x1A1A2E)
+        embed.add_field(name="🎱 Question", value=question, inline=False)
+        embed.add_field(name="Answer", value=response, inline=False)
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="mock", description="Spongebob-mock someone's text")
+    @app_commands.describe(text="Text to mock")
+    async def mock(self, interaction: discord.Interaction, text: str):
+        mocked = "".join(
+            c.upper() if i % 2 == 0 else c.lower() for i, c in enumerate(text)
+        )
+        await interaction.response.send_message(f"🧽 {mocked}")
+
+    @app_commands.command(name="avatar", description="Show a user's avatar")
+    @app_commands.describe(user="User to show avatar for (defaults to you)")
+    async def avatar(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
+        target = user or interaction.user
+        av = target.display_avatar
+        is_animated = av.is_animated()
+        embed = discord.Embed(
+            title=f"{target.display_name}'s avatar",
+            color=0x5865F2,
+        )
+        embed.set_image(url=av.with_size(1024).url)
+        formats = [f"[PNG]({av.with_format('png').url})", f"[WEBP]({av.with_format('webp').url})"]
+        if is_animated:
+            formats.append(f"[GIF]({av.with_format('gif').url})")
+        embed.add_field(name="Download", value=" | ".join(formats))
+        embed.set_footer(text=f"{'Animated' if is_animated else 'Static'} • User ID: {target.id}")
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="ship", description="Calculate love compatibility between two users")
+    @app_commands.describe(user1="First user", user2="Second user (defaults to you)")
+    async def ship(self, interaction: discord.Interaction, user1: discord.Member,
+                   user2: Optional[discord.Member] = None):
+        if user2 is None:
+            user2 = interaction.user
+        # Deterministic score from the sorted pair of IDs
+        combined = "".join(sorted([str(user1.id), str(user2.id)]))
+        score = int(hashlib.md5(combined.encode()).hexdigest(), 16) % 101
+        if score >= 80:
+            verdict = "❤️ Perfect match!"
+        elif score >= 60:
+            verdict = "💛 Pretty good!"
+        elif score >= 40:
+            verdict = "💙 It's complicated."
+        elif score >= 20:
+            verdict = "🖤 Not looking great..."
+        else:
+            verdict = "💔 Yikes."
+        bar = "█" * (score // 10) + "░" * (10 - score // 10)
+        embed = discord.Embed(title="💘 Compatibility Score", color=0xFF69B4)
+        embed.description = f"{user1.mention} + {user2.mention}"
+        embed.add_field(name="Score", value=f"`{bar}` {score}%", inline=False)
+        embed.add_field(name="Verdict", value=verdict)
+        await interaction.response.send_message(embed=embed)
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Fun(bot))

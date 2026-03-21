@@ -59,7 +59,51 @@ CREATE TABLE IF NOT EXISTS audit_config (
     log_channel_id TEXT,
     log_edits INTEGER NOT NULL DEFAULT 1, log_deletes INTEGER NOT NULL DEFAULT 1,
     log_joins INTEGER NOT NULL DEFAULT 1, log_leaves INTEGER NOT NULL DEFAULT 1,
-    log_role_changes INTEGER NOT NULL DEFAULT 1
+    log_role_changes INTEGER NOT NULL DEFAULT 1,
+    log_ghost_pings INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS autotranslate_config (
+    guild_id    TEXT PRIMARY KEY,
+    channel_id  TEXT NOT NULL,
+    target_lang TEXT NOT NULL DEFAULT 'en',
+    enabled     INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS giveaways (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id     TEXT NOT NULL,
+    channel_id   TEXT NOT NULL,
+    message_id   TEXT,
+    prize        TEXT NOT NULL,
+    winner_count INTEGER NOT NULL DEFAULT 1,
+    ends_at      TEXT NOT NULL,
+    ended        INTEGER NOT NULL DEFAULT 0,
+    winners      TEXT,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS warnings (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id     TEXT NOT NULL,
+    user_id      TEXT NOT NULL,
+    moderator_id TEXT NOT NULL,
+    reason       TEXT,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS antiraid_config (
+    guild_id               TEXT PRIMARY KEY,
+    enabled                INTEGER NOT NULL DEFAULT 0,
+    mass_join_enabled      INTEGER NOT NULL DEFAULT 1,
+    mass_join_threshold    INTEGER NOT NULL DEFAULT 10,
+    new_account_enabled    INTEGER NOT NULL DEFAULT 0,
+    new_account_days       INTEGER NOT NULL DEFAULT 7,
+    mention_spam_enabled   INTEGER NOT NULL DEFAULT 1,
+    mention_spam_threshold INTEGER NOT NULL DEFAULT 5,
+    message_spam_enabled   INTEGER NOT NULL DEFAULT 1,
+    message_spam_threshold INTEGER NOT NULL DEFAULT 8,
+    action                 TEXT NOT NULL DEFAULT 'timeout'
 );
 
 CREATE TABLE IF NOT EXISTS reaction_roles (
@@ -169,6 +213,49 @@ CREATE TABLE IF NOT EXISTS xp_log (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_xp_log_guild ON xp_log(guild_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS modlog (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id     TEXT NOT NULL,
+    action       TEXT NOT NULL,
+    user_id      TEXT NOT NULL,
+    moderator_id TEXT NOT NULL,
+    reason       TEXT,
+    extra        TEXT,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_modlog_guild ON modlog(guild_id);
+CREATE INDEX IF NOT EXISTS idx_modlog_user  ON modlog(guild_id, user_id);
+
+CREATE TABLE IF NOT EXISTS track_history (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id   TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    url        TEXT NOT NULL,
+    source     TEXT,
+    requester  TEXT,
+    played_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_track_history_guild ON track_history(guild_id, played_at DESC);
+
+CREATE TABLE IF NOT EXISTS ai_config (
+    guild_id      TEXT PRIMARY KEY,
+    enabled       INTEGER NOT NULL DEFAULT 0,
+    ai_channel_id TEXT,
+    personality   TEXT NOT NULL DEFAULT 'You are a helpful and friendly Discord bot assistant.',
+    model         TEXT NOT NULL DEFAULT 'gemini-2.0-flash',
+    max_history   INTEGER NOT NULL DEFAULT 20
+);
+
+CREATE TABLE IF NOT EXISTS ai_history (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id   TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    role       TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ai_history_channel ON ai_history(guild_id, channel_id, created_at DESC);
 """
 
 
@@ -237,6 +324,11 @@ async def init_db():
                 await db.execute(f"ALTER TABLE {table} ADD COLUMN mention_role_id TEXT")
             except Exception:
                 pass
+        # Add log_ghost_pings to audit_config
+        try:
+            await db.execute("ALTER TABLE audit_config ADD COLUMN log_ghost_pings INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass
         await db.commit()
 
 
@@ -1155,5 +1247,304 @@ async def update_streaming_mention_role(config_id: int, mention_role_id: str | N
         await db.execute(
             "UPDATE streaming_config SET mention_role_id = ? WHERE id = ?",
             (mention_role_id, config_id),
+        )
+        await db.commit()
+
+
+# --------------- Auto-Translate Config ---------------
+
+async def get_autotranslate_config(guild_id: str) -> Optional[dict]:
+    async with _connect() as db:
+        cursor = await db.execute("SELECT * FROM autotranslate_config WHERE guild_id = ?", (guild_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def upsert_autotranslate_config(guild_id: str, **kwargs) -> None:
+    async with _connect() as db:
+        kwargs["guild_id"] = guild_id
+        cols = list(kwargs.keys())
+        vals = list(kwargs.values())
+        placeholders = ", ".join("?" for _ in cols)
+        updates = ", ".join(f"{k} = excluded.{k}" for k in cols if k != "guild_id")
+        await db.execute(
+            f"INSERT INTO autotranslate_config ({', '.join(cols)}) VALUES ({placeholders})"
+            f" ON CONFLICT(guild_id) DO UPDATE SET {updates}",
+            vals,
+        )
+        await db.commit()
+
+
+async def delete_autotranslate_config(guild_id: str) -> None:
+    async with _connect() as db:
+        await db.execute("DELETE FROM autotranslate_config WHERE guild_id = ?", (guild_id,))
+        await db.commit()
+
+
+async def get_all_autotranslate_configs() -> dict[str, dict]:
+    async with _connect() as db:
+        cursor = await db.execute("SELECT * FROM autotranslate_config WHERE enabled = 1")
+        rows = await cursor.fetchall()
+        return {r["guild_id"]: dict(r) for r in rows}
+
+
+# --------------- Giveaways ---------------
+
+async def create_giveaway(*, guild_id: str, channel_id: str, prize: str,
+                           winner_count: int, ends_at: str) -> int:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO giveaways (guild_id, channel_id, prize, winner_count, ends_at) VALUES (?, ?, ?, ?, ?)",
+            (guild_id, channel_id, prize, winner_count, ends_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def set_giveaway_message_id(giveaway_id: int, message_id: str) -> None:
+    async with _connect() as db:
+        await db.execute("UPDATE giveaways SET message_id = ? WHERE id = ?", (message_id, giveaway_id))
+        await db.commit()
+
+
+async def get_giveaway(giveaway_id: int) -> Optional[dict]:
+    async with _connect() as db:
+        cursor = await db.execute("SELECT * FROM giveaways WHERE id = ?", (giveaway_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def get_giveaway_by_message(message_id: str) -> Optional[dict]:
+    async with _connect() as db:
+        cursor = await db.execute("SELECT * FROM giveaways WHERE message_id = ?", (message_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def get_active_giveaways(guild_id: str) -> list[dict]:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "SELECT * FROM giveaways WHERE guild_id = ? AND ended = 0 ORDER BY ends_at", (guild_id,)
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def get_all_active_giveaways() -> list[dict]:
+    async with _connect() as db:
+        cursor = await db.execute("SELECT * FROM giveaways WHERE ended = 0 ORDER BY ends_at")
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def end_giveaway(giveaway_id: int, winners: list[str]) -> None:
+    import json as _json
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE giveaways SET ended = 1, winners = ? WHERE id = ?",
+            (_json.dumps(winners), giveaway_id),
+        )
+        await db.commit()
+
+
+# --------------- Warnings ---------------
+
+async def add_warning(*, guild_id: str, user_id: str, moderator_id: str,
+                       reason: Optional[str] = None) -> int:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO warnings (guild_id, user_id, moderator_id, reason) VALUES (?, ?, ?, ?)",
+            (guild_id, user_id, moderator_id, reason),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_warnings(guild_id: str, user_id: str) -> list[dict]:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC",
+            (guild_id, user_id),
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def clear_warnings(guild_id: str, user_id: str) -> int:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "DELETE FROM warnings WHERE guild_id = ? AND user_id = ?", (guild_id, user_id)
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
+async def get_warning(warning_id: int, guild_id: str) -> Optional[dict]:
+    """Fetch a single warning by ID, scoped to guild."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "SELECT * FROM warnings WHERE id = ? AND guild_id = ?", (warning_id, guild_id)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def delete_warning(warning_id: int, guild_id: str) -> bool:
+    """Delete a single warning by ID. Returns True if a row was deleted."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "DELETE FROM warnings WHERE id = ? AND guild_id = ?", (warning_id, guild_id)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+# --------------- Modlog ---------------
+
+async def add_modlog_entry(*, guild_id: str, action: str, user_id: str,
+                            moderator_id: str, reason: Optional[str] = None,
+                            extra: Optional[str] = None) -> int:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO modlog (guild_id, action, user_id, moderator_id, reason, extra)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (guild_id, action, user_id, moderator_id, reason, extra),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_modlog(guild_id: str, *, user_id: Optional[str] = None,
+                     moderator_id: Optional[str] = None, limit: int = 20) -> list[dict]:
+    conditions = ["guild_id = ?"]
+    params: list = [guild_id]
+    if user_id:
+        conditions.append("user_id = ?")
+        params.append(user_id)
+    if moderator_id:
+        conditions.append("moderator_id = ?")
+        params.append(moderator_id)
+    params.append(limit)
+    async with _connect() as db:
+        cursor = await db.execute(
+            f"SELECT * FROM modlog WHERE {' AND '.join(conditions)} ORDER BY created_at DESC LIMIT ?",
+            params,
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+# --------------- Anti-Raid Config ---------------
+
+async def get_antiraid_config(guild_id: str) -> Optional[dict]:
+    async with _connect() as db:
+        cursor = await db.execute("SELECT * FROM antiraid_config WHERE guild_id = ?", (guild_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def upsert_antiraid_config(guild_id: str, **kwargs) -> None:
+    async with _connect() as db:
+        kwargs["guild_id"] = guild_id
+        cols = list(kwargs.keys())
+        vals = list(kwargs.values())
+        placeholders = ", ".join("?" for _ in cols)
+        updates = ", ".join(f"{k} = excluded.{k}" for k in cols if k != "guild_id")
+        await db.execute(
+            f"INSERT INTO antiraid_config ({', '.join(cols)}) VALUES ({placeholders})"
+            f" ON CONFLICT(guild_id) DO UPDATE SET {updates}",
+            vals,
+        )
+        await db.commit()
+
+
+async def get_all_antiraid_configs() -> dict[str, dict]:
+    async with _connect() as db:
+        cursor = await db.execute("SELECT * FROM antiraid_config WHERE enabled = 1")
+        rows = await cursor.fetchall()
+        return {r["guild_id"]: dict(r) for r in rows}
+
+
+# --------------- Track History ---------------
+
+async def add_track_history(guild_id: str, title: str, url: str,
+                             source: Optional[str], requester: Optional[str]) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO track_history (guild_id, title, url, source, requester) VALUES (?, ?, ?, ?, ?)",
+            (guild_id, title, url, source, requester),
+        )
+        # Keep only last 100 per guild
+        await db.execute(
+            """DELETE FROM track_history WHERE guild_id = ? AND id NOT IN (
+                SELECT id FROM track_history WHERE guild_id = ? ORDER BY played_at DESC LIMIT 100
+            )""",
+            (guild_id, guild_id),
+        )
+        await db.commit()
+
+
+async def get_track_history(guild_id: str, limit: int = 25) -> list[dict]:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "SELECT * FROM track_history WHERE guild_id = ? ORDER BY played_at DESC LIMIT ?",
+            (guild_id, limit),
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+# --------------- AI Config ---------------
+
+async def get_ai_config(guild_id: str) -> Optional[dict]:
+    async with _connect() as db:
+        cursor = await db.execute("SELECT * FROM ai_config WHERE guild_id = ?", (guild_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def upsert_ai_config(guild_id: str, **kwargs) -> None:
+    async with _connect() as db:
+        kwargs["guild_id"] = guild_id
+        cols = list(kwargs.keys())
+        vals = list(kwargs.values())
+        placeholders = ", ".join("?" for _ in cols)
+        updates = ", ".join(f"{k} = excluded.{k}" for k in cols if k != "guild_id")
+        await db.execute(
+            f"INSERT INTO ai_config ({', '.join(cols)}) VALUES ({placeholders})"
+            f" ON CONFLICT(guild_id) DO UPDATE SET {updates}",
+            vals,
+        )
+        await db.commit()
+
+
+# --------------- AI History ---------------
+
+async def get_ai_history(guild_id: str, channel_id: str, limit: int = 20) -> list[dict]:
+    async with _connect() as db:
+        cursor = await db.execute(
+            """SELECT role, content FROM ai_history
+               WHERE guild_id = ? AND channel_id = ?
+               ORDER BY created_at DESC LIMIT ?""",
+            (guild_id, channel_id, limit),
+        )
+        rows = await cursor.fetchall()
+        return list(reversed([dict(r) for r in rows]))
+
+
+async def add_ai_message(guild_id: str, channel_id: str, role: str, content: str) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO ai_history (guild_id, channel_id, role, content) VALUES (?, ?, ?, ?)",
+            (guild_id, channel_id, role, content),
+        )
+        await db.commit()
+
+
+async def clear_ai_history(guild_id: str, channel_id: str) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "DELETE FROM ai_history WHERE guild_id = ? AND channel_id = ?",
+            (guild_id, channel_id),
         )
         await db.commit()

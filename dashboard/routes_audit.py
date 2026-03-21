@@ -50,7 +50,11 @@ async def audit_save(guild_id: int):
         log_joins=int("log_joins" in form),
         log_leaves=int("log_leaves" in form),
         log_role_changes=int("log_role_changes" in form),
+        log_ghost_pings=int("log_ghost_pings" in form),
     )
+    webhook_url = form.get("webhook_url", "").strip()
+    if webhook_url:
+        await db.set_guild_setting(str(guild_id), "audit_webhook_url", webhook_url)
 
     cog = bot.get_cog("AuditLog")
     if cog:

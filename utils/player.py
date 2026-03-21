@@ -13,6 +13,15 @@ class LoopMode(Enum):
     QUEUE = "queue"
 
 
+SOURCE_BADGES: dict[str, str] = {
+    "youtube": "▶️",
+    "spotify": "🎵",
+    "tidal": "🌊",
+    "soundcloud": "☁️",
+    "search": "🔍",
+}
+
+
 @dataclass
 class TrackInfo:
     title: str
@@ -21,6 +30,7 @@ class TrackInfo:
     thumbnail: Optional[str] = None
     requester: Optional[str] = None
     stream_url: Optional[str] = None  # resolved lazily before playback
+    source: Optional[str] = None  # youtube, spotify, tidal, soundcloud, search
 
     @property
     def duration_str(self) -> str:
@@ -44,6 +54,8 @@ class GuildMusicPlayer:
         self.text_channel = None  # for sending "now playing" messages
         self.now_playing_message: Optional[object] = None  # discord.Message
         self._idle_task: Optional[asyncio.Task] = None
+        self.active_filter: Optional[str] = None
+        self.crossfade: int = 0
 
     def add(self, track: TrackInfo):
         self.queue.append(track)

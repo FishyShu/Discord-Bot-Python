@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}AI Memory — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>AI User Memory — {{ guild.name }}</h1>
+    <div class="page-actions">
+        <a href="{{ url_for('ai.ai_edit', guild_id=guild.id) }}" class="btn btn-secondary">Config</a>
+        <a href="{{ url_for('ai.ai_logs', guild_id=guild.id) }}" class="btn btn-secondary">Logs</a>
+    </div>
+</div>
+
+<div class="card">
+    {% if memories %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>User ID</th>
+                <th>Last Updated</th>
+                <th>Summary</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for mem in memories %}
+            <tr>
+                <td><code>{{ mem.user_id }}</code></td>
+                <td style="white-space:nowrap;">{{ (mem.updated_at or '')[:16] }}</td>
+                <td style="max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ mem.memory_text }}">
+                    {{ (mem.memory_text or '')[:150] }}{% if (mem.memory_text or '') | length > 150 %}…{% endif %}
+                </td>
+                <td>
+                    <form method="POST" action="{{ url_for('ai.ai_memory_delete', guild_id=guild.id, user_id=mem.user_id) }}" style="display:inline;">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this memory?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="padding:1rem;color:var(--color-text-muted);">No user memories stored yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

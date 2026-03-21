@@ -28,6 +28,10 @@ Thumbs.db
 # Database
 data/
 
+# Sounds (user-uploaded files — stored locally, not in repo)
+sounds/*
+!sounds/.gitkeep
+
 # Cache & credentials
 .cache/
 .claude/

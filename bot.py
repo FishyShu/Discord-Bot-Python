@@ -21,6 +21,25 @@ for _p in _ffmpeg_matches:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 log = logging.getLogger("bot")
 
+# Refuse to start with default secrets unless explicitly allowed (dev mode)
+_default_pw = os.getenv("DASHBOARD_PASSWORD", "") in ("change-me", "")
+_allow_defaults = os.getenv("ALLOW_DEFAULT_SECRETS", "0") == "1"
+if _default_pw and not _allow_defaults:
+    log.error(
+        "DASHBOARD_PASSWORD is set to a default or empty value. "
+        "Set a secure password in .env, or set ALLOW_DEFAULT_SECRETS=1 for development."
+    )
+    raise SystemExit(1)
+
+# HTTPS enforcement warning — dashboard runs plain HTTP; warn once when not in dev mode
+if not _allow_defaults and os.getenv("_HTTPS_WARNED") != "1":
+    os.environ["_HTTPS_WARNED"] = "1"
+    log.warning(
+        "SECURITY REMINDER: The dashboard runs over plain HTTP. "
+        "In production, place it behind a reverse proxy with TLS (nginx, Caddy, Traefik). "
+        "See deploy/ for setup guides."
+    )
+
 BOT_VERSION = "1.2.3"
 
 
@@ -44,6 +63,7 @@ class MusicBot(commands.Bot):
             "cogs.twitch_drops", "cogs.voice_separate",
             "cogs.moderation", "cogs.fun", "cogs.autotranslate",
             "cogs.giveaways", "cogs.antiraid", "cogs.backup",
+            "cogs.ai",
         ]
         for ext in cog_extensions:
             try:
@@ -63,15 +83,6 @@ class MusicBot(commands.Bot):
             log.info("  - %s (ID: %s)", guild.name, guild.id)
         log.info("Connected to %d server(s)", len(self.guilds))
 
-        # Guild-specific sync for instant propagation (global sync can take up to 1h)
-        if os.getenv("SYNC_COMMANDS", "0") == "1":
-            for guild in self.guilds:
-                try:
-                    self.tree.copy_global_to(guild=guild)
-                    guild_synced = await self.tree.sync(guild=guild)
-                    log.info("Guild sync: %d commands → %s", len(guild_synced), guild.name)
-                except discord.HTTPException as e:
-                    log.warning("Guild sync failed for %s: %s", guild.name, e)
 
 
 async def run_dashboard(bot):

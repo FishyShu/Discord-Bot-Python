@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}AI Chatbot{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>AI Chatbot</h1>
+    <p>Configure the AI chatbot per server.</p>
+</div>
+
+<div class="server-grid">
+    {% for guild in guilds %}
+    <a href="{{ url_for('ai.ai_edit', guild_id=guild.id) }}" class="grid-link">
+        <div class="card server-card">
+            {% if guild.icon %}
+            <img src="{{ guild.icon.url }}" alt="">
+            {% else %}
+            <div class="server-icon-fallback">{{ guild.name[0] }}</div>
+            {% endif %}
+            <div class="server-info">
+                <h3>{{ guild.name }}</h3>
+                <p>
+                    {% set cfg = configs.get(guild.id) %}
+                    {% if cfg %}
+                    <span class="badge badge-success">Configured</span>
+                    {% if cfg.api_key %}
+                    <span class="badge badge-info">Custom Key</span>
+                    {% endif %}
+                    {% else %}
+                    <span class="badge badge-secondary">Default</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}
