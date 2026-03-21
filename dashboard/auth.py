@@ -1,19 +1,37 @@
 from __future__ import annotations
 
 import functools
+import hmac
 import logging
 import os
 import time
 
+import bcrypt
 from quart import Blueprint, redirect, render_template, request, session, url_for
 
 log = logging.getLogger(__name__)
 
 auth_bp = Blueprint("auth", __name__)
 
-DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "admin")
-if DASHBOARD_PASSWORD == "admin":
-    log.warning("DASHBOARD_PASSWORD is set to the default 'admin'. Change it in production!")
+_RAW_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "admin")
+
+# Support both bcrypt-hashed and plaintext passwords.
+# If the value starts with "$2b$" it's already a bcrypt hash; otherwise hash it at startup.
+if _RAW_PASSWORD.startswith("$2b$"):
+    _PASSWORD_HASH: bytes = _RAW_PASSWORD.encode()
+else:
+    if _RAW_PASSWORD == "admin":
+        log.warning(
+            "DASHBOARD_PASSWORD is set to the default 'admin'. "
+            "Change it in production! Set ALLOW_DEFAULT_SECRETS=1 to suppress this check."
+        )
+        if os.getenv("ALLOW_DEFAULT_SECRETS", "0") != "1":
+            log.error(
+                "Refusing to start with default DASHBOARD_PASSWORD. "
+                "Set a secure password in .env or set ALLOW_DEFAULT_SECRETS=1 for development."
+            )
+            raise SystemExit(1)
+    _PASSWORD_HASH = bcrypt.hashpw(_RAW_PASSWORD.encode(), bcrypt.gensalt())
 
 # Rate limiting: {ip: [timestamps]}
 _login_attempts: dict[str, list[float]] = {}
@@ -54,10 +72,14 @@ async def login():
 
         form = await request.form
         password = form.get("password", "")
-        if password == DASHBOARD_PASSWORD:
+
+        if bcrypt.checkpw(password.encode(), _PASSWORD_HASH):
+            # Regenerate session to prevent session fixation
+            session.clear()
             session["authenticated"] = True
             session.permanent = True
             return redirect(url_for("dashboard.overview"))
+
         attempts.append(now)
         _login_attempts[ip] = attempts
         error = "Invalid password."

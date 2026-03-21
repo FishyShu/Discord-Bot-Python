@@ -69,6 +69,7 @@ HELP_CATEGORIES: dict[str, list[tuple[str, str]]] = {
         ("reminders", "List your active reminders"),
         ("cancelreminder", "Cancel a reminder by ID"),
         ("download", "Download audio/video from a URL"),
+        ("separate", "Separate vocals and instrumentals from an audio file"),
     ],
     "Notifications": [
         ("freestuff setup", "Set up free game notifications"),

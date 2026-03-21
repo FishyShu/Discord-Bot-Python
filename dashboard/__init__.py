@@ -21,7 +21,13 @@ def create_app(bot=None) -> Quart:
         template_folder="templates",
     )
     secret = os.getenv("DASHBOARD_SECRET", "change-me-in-production")
-    if secret == "change-me-in-production":
+    if secret in ("change-me-in-production", "change-me-to-a-random-string"):
+        if os.getenv("ALLOW_DEFAULT_SECRETS", "0") != "1":
+            log.error(
+                "DASHBOARD_SECRET is set to a default value. "
+                "Set a secure random string in .env or set ALLOW_DEFAULT_SECRETS=1 for development."
+            )
+            raise SystemExit(1)
         log.warning("DASHBOARD_SECRET is set to the default value. Change it in production!")
     app.secret_key = secret
     app.permanent_session_lifetime = timedelta(hours=24)
@@ -152,6 +158,7 @@ def create_app(bot=None) -> Quart:
         }
 
     @app.route("/health")
+    @login_required
     async def health():
         b = app.bot
         return jsonify({
@@ -175,7 +182,22 @@ def create_app(bot=None) -> Quart:
                 return
             await validate_csrf()
 
+    @app.after_request
+    async def set_security_headers(response):
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' https://cdn.discordapp.com data:; "
+            "frame-ancestors 'none'"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
     @app.route("/uploads/<filename>")
+    @login_required
     async def uploaded_file(filename):
         return await send_from_directory(app.config["UPLOAD_DIR"], filename)
 

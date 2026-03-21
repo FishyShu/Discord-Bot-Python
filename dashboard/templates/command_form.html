@@ -31,7 +31,7 @@
         <div class="form-group" id="trigger-group" style="{{ '' if command and command.type in ('auto_reply',) else 'display:none' }}">
             <label for="trigger_pattern">Trigger Pattern</label>
             <input type="text" id="trigger_pattern" name="trigger_pattern"
-                   value="{{ command.trigger_pattern if command else '' }}"
+                   value="{{ command.trigger_pattern if command and command.trigger_pattern else '' }}"
                    placeholder="e.g. hello there">
             <small>Substring or pattern to match in any message (auto-reply only).</small>
         </div>
@@ -43,13 +43,25 @@
             <small>One pattern per line. Any match triggers the rule. Leave empty to use single trigger above.</small>
         </div>
 
+        <div class="form-group" id="match-mode-group" style="{{ '' if command and command.type in ('auto_reply',) else 'display:none' }}">
+            <label for="match_mode">Match Mode</label>
+            <select id="match_mode" name="match_mode">
+                <option value="contains" {{ 'selected' if not command or not command.match_mode or command.match_mode == 'contains' }}>Contains</option>
+                <option value="starts_with" {{ 'selected' if command and command.match_mode == 'starts_with' }}>Starts With</option>
+                <option value="ends_with" {{ 'selected' if command and command.match_mode == 'ends_with' }}>Ends With</option>
+                <option value="exact" {{ 'selected' if command and command.match_mode == 'exact' }}>Exact Match</option>
+                <option value="word" {{ 'selected' if command and command.match_mode == 'word' }}>Whole Word</option>
+            </select>
+            <small>How the trigger pattern is matched against messages.</small>
+        </div>
+
         <div class="form-group" id="use-regex-group" style="{{ '' if command and command.type in ('auto_reply',) else 'display:none' }}">
             <div class="toggle">
                 <input type="checkbox" id="use_regex" name="use_regex"
                        {{ 'checked' if command and command.use_regex }}>
                 <label for="use_regex">Use Regex</label>
             </div>
-            <small>Enable regex matching for trigger patterns (e.g. <code>\b(hi|hello)\b</code>).</small>
+            <small>Enable regex matching for trigger patterns (e.g. <code>\b(hi|hello)\b</code>). Overrides match mode.</small>
         </div>
 
         <div class="form-group" id="reaction-emojis-group" style="{{ '' if command and command.type in ('auto_reply', 'contains_link', 'contains_file', 'contains_emoji', 'contains_role_mention') else 'display:none' }}">
@@ -114,14 +126,14 @@
         <div class="form-group" id="response-group">
             <label for="response_text">Response Text</label>
             <textarea id="response_text" name="response_text"
-                      placeholder="Bot's response text...">{{ command.response_text if command else '' }}</textarea>
+                      placeholder="Bot's response text...">{{ command.response_text if command and command.response_text else '' }}</textarea>
             <small>Supports variables and random responses (see help below).</small>
         </div>
 
         <div class="form-group" id="embed-group" style="{{ '' if command and command.type == 'embed' else 'display:none' }}">
             <label for="embed_json">Embed JSON</label>
             <textarea id="embed_json" name="embed_json"
-                      placeholder='{"title": "Hello", "description": "World", "color": 3447003}'>{{ command.embed_json if command else '' }}</textarea>
+                      placeholder='{"title": "Hello", "description": "World", "color": 3447003}'>{{ command.embed_json if command and command.embed_json else '' }}</textarea>
             <small>Optional JSON for embed fields: title, description, color, footer, thumbnail, fields[].</small>
         </div>
 
@@ -298,6 +310,7 @@ function toggleFields(type) {
     var isNonEmbed = type !== 'embed';
     document.getElementById('trigger-group').style.display = isAutoReply ? '' : 'none';
     document.getElementById('trigger-patterns-group').style.display = isAutoReply ? '' : 'none';
+    document.getElementById('match-mode-group').style.display = isAutoReply && !document.getElementById('use_regex').checked ? '' : 'none';
     document.getElementById('use-regex-group').style.display = isAutoReply ? '' : 'none';
     document.getElementById('embed-group').style.display = type === 'embed' ? '' : 'none';
     document.getElementById('filters-group').style.display = isAutoType ? '' : 'none';
@@ -315,5 +328,9 @@ function toggleFields(type) {
 function toggleModValue(value) {
     document.getElementById('mod-action-value-group').style.display = ['timeout', 'add_role'].indexOf(value) !== -1 ? '' : 'none';
 }
+document.getElementById('use_regex').addEventListener('change', function() {
+    var isAutoReply = document.getElementById('type').value === 'auto_reply';
+    document.getElementById('match-mode-group').style.display = isAutoReply && !this.checked ? '' : 'none';
+});
 </script>
 {% endblock %}

@@ -1,0 +1,21 @@
+[Unit]
+Description=Discord Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/discord-bot
+ExecStart=/home/%i/discord-bot/venv/bin/python bot.py
+Restart=always
+RestartSec=10
+EnvironmentFile=/home/%i/discord-bot/.env
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/%i/discord-bot/data
+
+[Install]
+WantedBy=multi-user.target
