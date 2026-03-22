@@ -12,14 +12,23 @@ DEFAULT_PROVIDER = "gemini"
 
 # Supported premium models and their providers
 MODEL_PROVIDERS: dict[str, str] = {
-    "gemini-2.5-flash":    "gemini",
-    "gemini-2.5-pro":      "gemini",
-    "gemini-2.0-flash":    "gemini",
+    # Gemini
+    "gemini-2.5-flash":      "gemini",
+    "gemini-2.5-pro":        "gemini",
+    "gemini-2.0-flash":      "gemini",
     "gemini-2.0-flash-lite": "gemini",
-    "claude-sonnet-4-6":   "anthropic",
-    "claude-opus-4-6":     "anthropic",
-    "gpt-4o":              "openai",
-    "gpt-4o-mini":         "openai",
+    # Anthropic
+    "claude-sonnet-4-6":     "anthropic",
+    "claude-opus-4-6":       "anthropic",
+    # OpenAI
+    "gpt-4o":                "openai",
+    "gpt-4o-mini":           "openai",
+    # Groq (free tier — very generous quota)
+    "llama-3.3-70b-versatile":     "groq",
+    "llama-3.1-8b-instant":        "groq",
+    "llama3-70b-8192":             "groq",
+    "mixtral-8x7b-32768":          "groq",
+    "gemma2-9b-it":                "groq",
 }
 
 
@@ -81,9 +90,16 @@ async def call_ai(
         else:
             provider = get_provider(model)
     else:
-        model = DEFAULT_MODEL
-        api_key = os.getenv("GEMINI_API_KEY")
-        provider = DEFAULT_PROVIDER
+        # No custom key — try Groq free tier first, fall back to Gemini
+        groq_key = os.getenv("GROQ_API_KEY")
+        if groq_key:
+            model = "llama-3.3-70b-versatile"
+            api_key = groq_key
+            provider = "groq"
+        else:
+            model = DEFAULT_MODEL
+            api_key = os.getenv("GEMINI_API_KEY")
+            provider = DEFAULT_PROVIDER
 
     if not api_key:
         return None
@@ -97,6 +113,8 @@ async def call_ai(
             result = await _call_anthropic(api_key, model, system_prompt, messages)
         elif provider == "openai":
             result = await _call_openai(api_key, model, system_prompt, messages)
+        elif provider == "groq":
+            result = await _call_groq(api_key, model, system_prompt, messages)
         else:
             log.warning("Unknown provider %s", provider)
             return None
@@ -180,6 +198,26 @@ async def _call_openai(
         return None
 
     client = AsyncOpenAI(api_key=api_key)
+    converted = [{"role": "system", "content": system_prompt}]
+    converted += [{"role": m["role"], "content": m["content"]} for m in messages]
+    response = await client.chat.completions.create(model=model, messages=converted, max_tokens=2048)
+    return response.choices[0].message.content if response.choices else None
+
+
+async def _call_groq(
+    api_key: str,
+    model: str,
+    system_prompt: str,
+    messages: list[dict],
+) -> Optional[str]:
+    # Groq uses an OpenAI-compatible API — reuse the openai client with a custom base URL
+    try:
+        from openai import AsyncOpenAI
+    except ImportError:
+        log.error("openai package not installed (required for Groq). Run: pip install openai")
+        return None
+
+    client = AsyncOpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
     converted = [{"role": "system", "content": system_prompt}]
     converted += [{"role": m["role"], "content": m["content"]} for m in messages]
     response = await client.chat.completions.create(model=model, messages=converted, max_tokens=2048)
