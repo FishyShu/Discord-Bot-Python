@@ -29,6 +29,26 @@ MODEL_PROVIDERS: dict[str, str] = {
     "llama3-70b-8192":             "groq",
     "mixtral-8x7b-32768":          "groq",
     "gemma2-9b-it":                "groq",
+    # DeepSeek (very cheap, excellent quality)
+    "deepseek-chat":               "deepseek",
+    "deepseek-reasoner":           "deepseek",
+    # Mistral (free tier available)
+    "mistral-small-latest":        "mistral",
+    "mistral-medium-latest":       "mistral",
+    "mistral-large-latest":        "mistral",
+    # Cerebras (extremely fast inference, free tier)
+    "llama-4-scout-17b-16e-instruct": "cerebras",
+    "llama-3.3-70b":               "cerebras",
+    # OpenRouter (unified gateway — 300+ models, many free)
+    "openrouter/auto":                          "openrouter",
+    "meta-llama/llama-3.3-70b-instruct:free":  "openrouter",
+    "google/gemini-2.0-flash-exp:free":         "openrouter",
+    "deepseek/deepseek-r1:free":                "openrouter",
+    "mistralai/mistral-7b-instruct:free":       "openrouter",
+    # GitHub Models (free with GitHub token)
+    "github/gpt-4o":               "github",
+    "github/gpt-4o-mini":          "github",
+    "github/meta-llama-3.3-70b":   "github",
 }
 
 
@@ -115,6 +135,8 @@ async def call_ai(
             result = await _call_openai(api_key, model, system_prompt, messages)
         elif provider == "groq":
             result = await _call_groq(api_key, model, system_prompt, messages)
+        elif provider in ("deepseek", "mistral", "cerebras", "openrouter", "github"):
+            result = await _call_openai_compat(api_key, model, system_prompt, messages, provider=provider)
         else:
             log.warning("Unknown provider %s", provider)
             return None
@@ -204,21 +226,48 @@ async def _call_openai(
     return response.choices[0].message.content if response.choices else None
 
 
+_OPENAI_COMPAT_URLS: dict[str, str] = {
+    "groq":       "https://api.groq.com/openai/v1",
+    "deepseek":   "https://api.deepseek.com/v1",
+    "mistral":    "https://api.mistral.ai/v1",
+    "cerebras":   "https://api.cerebras.ai/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "github":     "https://models.inference.ai.azure.com",
+}
+
+
+async def _call_openai_compat(
+    api_key: str,
+    model: str,
+    system_prompt: str,
+    messages: list[dict],
+    *,
+    provider: str,
+) -> Optional[str]:
+    """Generic handler for any OpenAI-compatible provider."""
+    try:
+        from openai import AsyncOpenAI
+    except ImportError:
+        log.error("openai package not installed.")
+        return None
+
+    base_url = _OPENAI_COMPAT_URLS.get(provider)
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    # Strip provider prefix for OpenRouter model names (e.g. "openrouter/auto" → "auto")
+    effective_model = model.split("/", 1)[1] if provider == "openrouter" and "/" in model and model.startswith("openrouter/") else model
+    # GitHub Models uses the model name without the "github/" prefix
+    if provider == "github" and model.startswith("github/"):
+        effective_model = model[len("github/"):]
+    converted = [{"role": "system", "content": system_prompt}]
+    converted += [{"role": m["role"], "content": m["content"]} for m in messages]
+    response = await client.chat.completions.create(model=effective_model, messages=converted, max_tokens=2048)
+    return response.choices[0].message.content if response.choices else None
+
+
 async def _call_groq(
     api_key: str,
     model: str,
     system_prompt: str,
     messages: list[dict],
 ) -> Optional[str]:
-    # Groq uses an OpenAI-compatible API — reuse the openai client with a custom base URL
-    try:
-        from openai import AsyncOpenAI
-    except ImportError:
-        log.error("openai package not installed (required for Groq). Run: pip install openai")
-        return None
-
-    client = AsyncOpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
-    converted = [{"role": "system", "content": system_prompt}]
-    converted += [{"role": m["role"], "content": m["content"]} for m in messages]
-    response = await client.chat.completions.create(model=model, messages=converted, max_tokens=2048)
-    return response.choices[0].message.content if response.choices else None
+    return await _call_openai_compat(api_key, model, system_prompt, messages, provider="groq")
