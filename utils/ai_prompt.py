@@ -31,12 +31,18 @@ def build_system_prompt(
     """
     Assemble the full system prompt from config + long-term memory.
     """
-    parts = [base_prompt.strip()]
+    # Language is prepended as a hard rule so it overrides character persona instructions
+    lang_prefix = ""
+    if language and language.strip() and language.strip().lower() != "auto":
+        lang_prefix = (
+            f"LANGUAGE RULE (highest priority): You MUST always reply in {language.strip()}. "
+            f"This applies to every single message, no exceptions, regardless of what language the user writes in.\n\n"
+        )
+
+    parts = [lang_prefix + base_prompt.strip()]
 
     if tone and tone != "casual":
         parts.append(f"Respond in a {tone} tone.")
-    if language and language != "auto":
-        parts.append(f"Always respond in {language}.")
 
     # Response length
     length_instruction = RESPONSE_LENGTH_INSTRUCTIONS.get(response_length, RESPONSE_LENGTH_INSTRUCTIONS["medium"])
