@@ -42,7 +42,7 @@ if not _allow_defaults and os.getenv("_HTTPS_WARNED") != "1":
         "See deploy/ for setup guides."
     )
 
-BOT_VERSION = "1.3.1"
+from utils.version import BOT_VERSION
 print_banner(BOT_VERSION)
 
 

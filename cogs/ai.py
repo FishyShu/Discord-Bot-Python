@@ -813,19 +813,24 @@ class AI(commands.Cog):
             ephemeral=True,
         )
 
+    async def _model_autocomplete(self, interaction: discord.Interaction, current: str):
+        return [
+            app_commands.Choice(name=m, value=m)
+            for m in MODEL_PROVIDERS
+            if current.lower() in m.lower()
+        ][:25]
+
     @ai_config_group.command(name="apikey", description="Set a custom AI API key and model")
     @app_commands.describe(
         key="Your API key (will be encrypted at rest)",
         model="Model to use with this key",
     )
-    @app_commands.choices(model=[
-        app_commands.Choice(name=m, value=m) for m in MODEL_PROVIDERS
-    ])
+    @app_commands.autocomplete(model=_model_autocomplete)
     async def config_apikey(
         self,
         interaction: discord.Interaction,
         key: str,
-        model: app_commands.Choice[str],
+        model: str,
     ):
         if not os.getenv("ENCRYPTION_KEY"):
             await interaction.response.send_message(
@@ -839,10 +844,10 @@ class AI(commands.Cog):
         if not encrypted:
             await interaction.response.send_message("Failed to encrypt key.", ephemeral=True)
             return
-        await upsert_server_config(str(interaction.guild_id), api_key=encrypted, model=model.value)
+        await upsert_server_config(str(interaction.guild_id), api_key=encrypted, model=model)
         await interaction.response.send_message(
             embed=discord.Embed(
-                description=f"API key stored and **{model.value}** set as the active model.",
+                description=f"API key stored and **{model}** set as the active model.",
                 color=discord.Color.green(),
             ),
             ephemeral=True,

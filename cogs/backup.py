@@ -10,7 +10,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from dashboard import db
-from bot import BOT_VERSION
+from utils.version import BOT_VERSION
 
 log = logging.getLogger(__name__)
 
