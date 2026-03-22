@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import time
@@ -69,7 +70,7 @@ _CACHE_TTL = 60  # seconds
 _response_cache: dict[str, tuple[str, float]] = {}  # key → (response, expires_at)
 
 def _cache_key(model: str, system_prompt: str, messages: list[dict]) -> str:
-    payload = f"{model}|{system_prompt}|{messages}"
+    payload = json.dumps({"model": model, "system": system_prompt, "messages": messages}, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()
 
 def _cache_get(key: str) -> Optional[str]:
@@ -237,6 +238,9 @@ async def _call_gemini(
     from google.genai import types
 
     client = genai.Client(api_key=api_key)
+
+    if not messages:
+        return None
 
     history = []
     for msg in messages[:-1]:
