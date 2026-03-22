@@ -123,6 +123,7 @@ HELP_CATEGORIES: dict[str, list[tuple[str, str]]] = {
         ("ai setup", "Onboarding wizard — create default AI config"),
         ("ai clear", "Clear your conversation history"),
         ("ai logs", "View recent conversation logs (admin)"),
+        ("ai config toggle", "Enable or disable the AI chatbot for this server"),
         ("ai config personality", "Set the AI personality (manual / preset / auto)"),
         ("ai config length", "Set response length (short / medium / long)"),
         ("ai config formatting", "Configure markdown and emoji usage"),

@@ -48,6 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_conversations_user
 
 
 _NEW_COLUMNS = [
+    ("enabled",                "INTEGER", "1"),
     ("response_length",        "TEXT",    "'medium'"),
     ("personality_mode",       "TEXT",    "'manual'"),
     ("personality_preset",     "TEXT",    "'helper'"),

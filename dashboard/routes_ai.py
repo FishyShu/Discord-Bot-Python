@@ -105,6 +105,7 @@ async def ai_save(guild_id: int):
         "language": form.get("language", "auto"),
         "tone": form.get("tone", "casual"),
         "blocklist": json.dumps(blocklist),
+        "enabled": int("ai_enabled" in form),
         "thinking_enabled": int("thinking_enabled" in form),
         "response_length": form.get("response_length", "medium"),
         "personality_mode": personality_mode,

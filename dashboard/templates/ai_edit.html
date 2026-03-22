@@ -13,6 +13,19 @@
 <form method="POST" id="ai-edit-form">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
 
+    {# ── Enable / Disable ─────────────────────────────────────────────── #}
+    <div class="card" style="margin-bottom:1.5rem;">
+        <div class="form-group" style="margin:0;">
+            <label class="toggle-label">
+                <input type="checkbox" class="toggle-input" name="ai_enabled"
+                       {% if cfg.get('enabled', 1) %}checked{% endif %}>
+                <span class="toggle-track"></span>
+                <strong>AI Chatbot Enabled</strong>
+                <span class="form-hint" style="margin:0 0 0 .5rem;">Uncheck to disable all AI responses for this server.</span>
+            </label>
+        </div>
+    </div>
+
     {# ── Personality ─────────────────────────────────────────────────── #}
     <div class="card" style="margin-bottom:1.5rem;">
         <h3 class="card-title">Personality</h3>

@@ -181,6 +181,7 @@ def _default_config() -> dict:
         "api_key": None,
         "model": None,
         "thinking_enabled": 0,
+        "enabled": 1,
         "response_length": "medium",
         "personality_mode": "manual",
         "personality_preset": "helper",
@@ -741,6 +742,20 @@ class AI(commands.Cog):
             ephemeral=True,
         )
 
+    @ai_config_group.command(name="toggle", description="Enable or disable the AI chatbot for this server")
+    @app_commands.choices(enabled=[
+        app_commands.Choice(name="Enable", value=1),
+        app_commands.Choice(name="Disable", value=0),
+    ])
+    async def config_toggle(self, interaction: discord.Interaction, enabled: app_commands.Choice[int]):
+        await upsert_server_config(str(interaction.guild_id), enabled=enabled.value)
+        state = "enabled" if enabled.value else "disabled"
+        color = discord.Color.green() if enabled.value else discord.Color.orange()
+        await interaction.response.send_message(
+            embed=discord.Embed(description=f"AI chatbot **{state}** for this server.", color=color),
+            ephemeral=True,
+        )
+
     @ai_config_group.command(name="channel-add", description="Add a channel for AI to auto-respond in")
     @app_commands.describe(channel="Channel to add")
     async def channel_add(self, interaction: discord.Interaction, channel: discord.TextChannel):
@@ -877,6 +892,7 @@ class AI(commands.Cog):
         channels_str = " ".join(f"<#{c}>" for c in channels_raw) or "None (mention-only)"
         blocklist = json.loads(cfg.get("blocklist") or "[]")
         embed = discord.Embed(title="AI Configuration", color=discord.Color.purple())
+        embed.add_field(name="Status", value="Enabled" if cfg.get("enabled", 1) else "**Disabled**", inline=True)
         embed.add_field(name="Model", value=cfg.get("model") or DEFAULT_MODEL, inline=True)
         embed.add_field(name="Language", value=cfg.get("language") or "auto", inline=True)
         embed.add_field(name="Tone", value=cfg.get("tone") or "casual", inline=True)
@@ -988,6 +1004,9 @@ class AI(commands.Cog):
         mentioned = self.bot.user in message.mentions
         server_id = str(message.guild.id)
         config = await self._get_config(server_id)
+
+        if not config.get("enabled", 1):
+            return
 
         active_channels = json.loads(config.get("active_channels") or "[]")
         in_ai_channel = str(message.channel.id) in active_channels
