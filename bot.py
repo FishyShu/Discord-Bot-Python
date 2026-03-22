@@ -42,7 +42,7 @@ if not _allow_defaults and os.getenv("_HTTPS_WARNED") != "1":
         "See deploy/ for setup guides."
     )
 
-BOT_VERSION = "1.2.3"
+BOT_VERSION = "1.3.0"
 print_banner(BOT_VERSION)
 
 

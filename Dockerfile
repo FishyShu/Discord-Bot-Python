@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
-LABEL version="1.2.3" \
-      description="Discord Bot — music, moderation, and more"
+LABEL version="1.3.0" \
+      description="Discord Bot — music, moderation, AI chatbot, and more"
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg build-essential && \
