@@ -91,7 +91,7 @@
                 <input type="checkbox" class="toggle-input" name="thinking_enabled"
                        {% if cfg.get('thinking_enabled') %}checked{% endif %}>
                 <span class="toggle-track"></span>
-                Enable extended thinking (Gemini only)
+                Enable extended thinking (Gemini 2.5+ only)
             </label>
         </div>
     </div>
@@ -233,20 +233,28 @@
     <div class="card" style="margin-bottom:1.5rem;">
         <h3 class="card-title">Premium API Key (optional)</h3>
         <p class="form-hint" style="margin-bottom:1rem;">
-            Use your own API key to unlock premium models (Claude, GPT-4o, premium Gemini).
-            Requires <code>ENCRYPTION_KEY</code> in <code>.env</code>.
+            Enter your own API key to use a specific model. The free default is
+            <strong>Groq</strong> (Llama 3.3 70B) if <code>GROQ_API_KEY</code> is set in <code>.env</code>,
+            otherwise <strong>Gemini 2.5 Flash-Lite</strong>.
+            Requires <code>ENCRYPTION_KEY</code> in <code>.env</code> to store the key securely.
         </p>
         <div class="form-row">
             <div class="form-group" style="flex:2;">
                 <label class="form-label">API Key <span class="badge badge-secondary">Leave blank to keep existing</span></label>
-                <input type="password" name="api_key" class="form-control" placeholder="sk-... or AIza...">
+                <input type="password" name="api_key" class="form-control" placeholder="sk-... or AIza... or gsk_...">
             </div>
             <div class="form-group" style="flex:1;">
                 <label class="form-label">Model</label>
                 <select name="model" class="form-control">
-                    <option value="">Default (gemini-2.0-flash-lite)</option>
-                    {% for m in models %}
-                    <option value="{{ m }}" {% if cfg.get('model') == m %}selected{% endif %}>{{ m }}</option>
+                    <option value="">Default (Groq / Gemini free tier)</option>
+                    {% for group_label, group_models in model_groups.items() %}
+                    {% if group_models %}
+                    <optgroup label="{{ group_label }}">
+                        {% for m in group_models %}
+                        <option value="{{ m }}" {% if cfg.get('model') == m %}selected{% endif %}>{{ m }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    {% endif %}
                     {% endfor %}
                 </select>
             </div>

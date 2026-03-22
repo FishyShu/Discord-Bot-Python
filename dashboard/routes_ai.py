@@ -51,6 +51,12 @@ async def ai_edit(guild_id: int):
         active_channels=active_channels_raw,
         blocklist=blocklist,
         models=list(MODEL_PROVIDERS.keys()),
+        model_groups={
+            "🆓 Groq (Free)": [m for m, p in MODEL_PROVIDERS.items() if p == "groq"],
+            "✦ Gemini": [m for m, p in MODEL_PROVIDERS.items() if p == "gemini"],
+            "✦ Anthropic (Claude)": [m for m, p in MODEL_PROVIDERS.items() if p == "anthropic"],
+            "✦ OpenAI": [m for m, p in MODEL_PROVIDERS.items() if p == "openai"],
+        },
         preset_labels=PRESET_LABELS,
         presets=list(PERSONALITY_PRESETS.keys()),
     )
