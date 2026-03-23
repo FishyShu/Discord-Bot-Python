@@ -360,7 +360,8 @@ class FreeStuff(commands.Cog):
                 if platform == "epic games":
                     platform = "epic"
 
-                flair = pdata.get("link_flair_text") or pdata.get("link_flair_richtext", [{}])[0].get("t", "")
+                richtext = pdata.get("link_flair_richtext") or []
+                flair = pdata.get("link_flair_text") or (richtext[0].get("t", "") if richtext else "")
                 category = classify_item(title, flair, platform, False)
                 image_url = pdata.get("thumbnail", "")
                 if not image_url.startswith("http"):
