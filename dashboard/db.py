@@ -256,6 +256,12 @@ CREATE TABLE IF NOT EXISTS ai_history (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_ai_history_channel ON ai_history(guild_id, channel_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS soundboard_config (
+    guild_id        TEXT PRIMARY KEY,
+    volume_mode     TEXT NOT NULL DEFAULT 'off',
+    fixed_volume    REAL NOT NULL DEFAULT 0.8
+);
 """
 
 
@@ -368,6 +374,11 @@ async def init_db():
                 await db.execute(f"ALTER TABLE twitch_drops_config ADD COLUMN {col} {definition}")
             except Exception:
                 pass
+        # soundboard_config columns (table created by SCHEMA; add column if older DBs lack it)
+        try:
+            await db.execute("ALTER TABLE soundboard_config ADD COLUMN fixed_volume REAL NOT NULL DEFAULT 0.8")
+        except Exception:
+            pass
         await db.commit()
 
 
@@ -1600,5 +1611,29 @@ async def clear_ai_history(guild_id: str, channel_id: str) -> None:
         await db.execute(
             "DELETE FROM ai_history WHERE guild_id = ? AND channel_id = ?",
             (guild_id, channel_id),
+        )
+        await db.commit()
+
+
+# --------------- Soundboard Config ---------------
+
+async def get_soundboard_config(guild_id: str) -> Optional[dict]:
+    async with _connect() as db:
+        cursor = await db.execute("SELECT * FROM soundboard_config WHERE guild_id = ?", (guild_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def upsert_soundboard_config(guild_id: str, **kwargs) -> None:
+    async with _connect() as db:
+        kwargs["guild_id"] = guild_id
+        cols = list(kwargs.keys())
+        vals = list(kwargs.values())
+        placeholders = ", ".join("?" for _ in cols)
+        updates = ", ".join(f"{k} = excluded.{k}" for k in cols if k != "guild_id")
+        await db.execute(
+            f"INSERT INTO soundboard_config ({', '.join(cols)}) VALUES ({placeholders})"
+            f" ON CONFLICT(guild_id) DO UPDATE SET {updates}",
+            vals,
         )
         await db.commit()

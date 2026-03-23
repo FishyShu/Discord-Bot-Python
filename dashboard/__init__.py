@@ -74,6 +74,7 @@ def create_app(bot=None) -> Quart:
     from .routes_giveaways import giveaways_bp
     from .routes_backup import backup_bp
     from .routes_ai import ai_bp
+    from .routes_soundboard import soundboard_bp
 
     # Dashboard overview blueprint (inline — small)
     from quart import Blueprint, redirect, render_template, url_for
@@ -227,5 +228,6 @@ def create_app(bot=None) -> Quart:
     app.register_blueprint(giveaways_bp, url_prefix="/giveaways")
     app.register_blueprint(backup_bp, url_prefix="/backup")
     app.register_blueprint(ai_bp, url_prefix="/ai")
+    app.register_blueprint(soundboard_bp, url_prefix="/soundboard")
 
     return app

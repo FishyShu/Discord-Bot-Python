@@ -105,6 +105,9 @@
                 <a href="{{ url_for('tts.tts_list') }}" class="sidebar-link {% if '/tts' in request.path %}active{% endif %}">
                     <span class="icon">&#128266;</span> TTS
                 </a>
+                <a href="{{ url_for('soundboard.soundboard_list') }}" class="sidebar-link {% if '/soundboard' in request.path %}active{% endif %}">
+                    <span class="icon">&#127929;</span> Soundboard
+                </a>
             </div>
 
             <!-- LOGGING -->
