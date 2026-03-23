@@ -329,6 +329,19 @@ async def init_db():
             await db.execute("ALTER TABLE audit_config ADD COLUMN log_ghost_pings INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass
+        # Add content_filters to freestuff_config
+        try:
+            await db.execute(
+                "ALTER TABLE freestuff_config ADD COLUMN content_filters TEXT NOT NULL DEFAULT "
+                "'[\"free_to_keep\",\"free_weekend\",\"other_freebies\",\"gamedev_assets\",\"giveaways_rewards\"]'"
+            )
+        except Exception:
+            pass
+        # Add category to free_games
+        try:
+            await db.execute("ALTER TABLE free_games ADD COLUMN category TEXT NOT NULL DEFAULT 'free_to_keep'")
+        except Exception:
+            pass
         await db.commit()
 
 
@@ -1087,13 +1100,13 @@ async def get_free_games(limit: int = 50) -> list[dict]:
 
 async def add_free_game(*, title: str, url: str, platform: str,
                          image_url: Optional[str] = None, original_price: Optional[str] = None,
-                         source: str) -> Optional[int]:
+                         source: str, category: str = "free_to_keep") -> Optional[int]:
     """Insert a free game, returns None if URL already exists."""
     async with _connect() as db:
         try:
             cursor = await db.execute(
-                "INSERT INTO free_games (title, url, platform, image_url, original_price, source) VALUES (?, ?, ?, ?, ?, ?)",
-                (title, url, platform, image_url, original_price, source),
+                "INSERT INTO free_games (title, url, platform, image_url, original_price, source, category) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (title, url, platform, image_url, original_price, source, category),
             )
             await db.commit()
             return cursor.lastrowid

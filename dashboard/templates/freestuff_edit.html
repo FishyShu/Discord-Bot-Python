@@ -6,6 +6,9 @@
     <p>{{ guild.name }}</p>
 </div>
 
+<div style="display:flex;gap:1.5rem;align-items:flex-start;flex-wrap:wrap;">
+<div style="flex:1;min-width:300px;">
+
 <form method="POST" class="card card-form">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <div class="form-group">
@@ -44,8 +47,34 @@
         <div style="display:flex;flex-wrap:wrap;gap:1rem;margin-top:0.5rem;">
             {% for p in ['steam', 'epic', 'gog', 'ubisoft', 'origin', 'humble', 'other'] %}
             <div class="toggle">
-                <input type="checkbox" name="platform_{{ p }}" id="platform_{{ p }}" {% if p in platforms or not cfg %}checked{% endif %}>
+                <input type="checkbox" name="platform_{{ p }}" id="platform_{{ p }}"
+                       value="{{ p }}"
+                       {% if p in platforms or not cfg %}checked{% endif %}
+                       onchange="updatePreview()">
                 <label for="platform_{{ p }}">{{ p|title }}</label>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label>Content Filters</label>
+        <small>Only send notifications for selected content types.</small>
+        <div style="display:flex;flex-wrap:wrap;gap:1rem;margin-top:0.5rem;">
+            {% set category_labels = {
+                'free_to_keep': '🎁 Free to Keep',
+                'free_weekend': '⏳ Free Weekend',
+                'other_freebies': '🎮 Other Freebies',
+                'gamedev_assets': '🛠️ Game Dev Assets',
+                'giveaways_rewards': '🎟️ Giveaways & Rewards'
+            } %}
+            {% for cat in all_categories %}
+            <div class="toggle">
+                <input type="checkbox" name="filter_{{ cat }}" id="filter_{{ cat }}"
+                       value="{{ cat }}"
+                       {% if cat in content_filters or not cfg %}checked{% endif %}
+                       onchange="updatePreview()">
+                <label for="filter_{{ cat }}">{{ category_labels[cat] }}</label>
             </div>
             {% endfor %}
         </div>
@@ -56,18 +85,21 @@
     </div>
 </form>
 
-<!-- Test notification -->
+<!-- Per-category test buttons -->
 {% if cfg.get('channel_id') %}
 <div class="card card-form mt-2">
     <h3>Test Notifications</h3>
     <p style="color:var(--text-muted);font-size:0.875rem;margin-bottom:1rem;">
-        Send example free game notifications to your configured channel to preview how they look.
-        Three example embeds will be sent (Epic, Steam, GOG) with realistic sample data.
+        Send an example embed to your configured channel for each content type.
     </p>
-    <form method="POST" action="{{ url_for('freestuff.freestuff_test', guild_id=guild.id) }}">
-    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary">Send Test Notifications</button>
-    </form>
+    <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+        <button class="btn btn-secondary" onclick="sendTest('free_to_keep')">🎁 Free to Keep</button>
+        <button class="btn btn-secondary" onclick="sendTest('free_weekend')">⏳ Free Weekend</button>
+        <button class="btn btn-secondary" onclick="sendTest('other_freebies')">🎮 Other Freebies</button>
+        <button class="btn btn-secondary" onclick="sendTest('gamedev_assets')">🛠️ Game Dev Asset</button>
+        <button class="btn btn-secondary" onclick="sendTest('giveaways_rewards')">🎟️ Giveaway / Reward</button>
+    </div>
+    <p id="test-status" style="color:var(--text-muted);font-size:0.85rem;margin-top:0.75rem;"></p>
 </div>
 {% endif %}
 
@@ -80,6 +112,7 @@
                 <tr>
                     <th>Title</th>
                     <th>Platform</th>
+                    <th>Category</th>
                     <th>Original Price</th>
                     <th>Discovered</th>
                 </tr>
@@ -89,6 +122,7 @@
                 <tr>
                     <td><a href="{{ game.url }}" target="_blank" rel="noopener">{{ game.title[:60] }}{% if game.title|length > 60 %}...{% endif %}</a></td>
                     <td>{{ game.platform|title }}</td>
+                    <td>{{ game.get('category', 'free_to_keep') }}</td>
                     <td>{{ game.original_price or '—' }}</td>
                     <td class="td-muted">{{ game.discovered_at[:16] }}</td>
                 </tr>
@@ -98,4 +132,87 @@
     </div>
 </div>
 {% endif %}
+
+</div><!-- end left column -->
+
+<!-- Live embed preview sidebar -->
+<div style="width:320px;flex-shrink:0;">
+    <div class="card">
+        <h3 style="margin-bottom:0.75rem;">Embed Preview</h3>
+        <p style="color:var(--text-muted);font-size:0.8rem;margin-bottom:1rem;">Updates as you change settings above.</p>
+        <div id="embed-preview" style="border-left:4px solid #2d2d2d;padding:12px 14px;background:#2f3136;border-radius:4px;">
+            <div id="prev-title" style="color:#fff;font-weight:bold;font-size:0.95rem;margin-bottom:4px;">Celeste</div>
+            <div style="display:flex;gap:1rem;margin-bottom:6px;flex-wrap:wrap;">
+                <div>
+                    <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Price</div>
+                    <div id="prev-price" style="color:#dcddde;font-size:0.85rem;">~~$19.99~~ → <strong>FREE</strong></div>
+                </div>
+                <div>
+                    <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Category</div>
+                    <div id="prev-category" style="color:#dcddde;font-size:0.85rem;">🎁 Free to Keep</div>
+                </div>
+                <div>
+                    <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Platform</div>
+                    <div id="prev-platform" style="color:#dcddde;font-size:0.85rem;">Epic Games</div>
+                </div>
+            </div>
+            <img id="prev-image" src="" alt="" style="width:100%;border-radius:4px;margin-top:4px;display:none;">
+            <div id="prev-footer" style="color:#72767d;font-size:0.72rem;margin-top:8px;border-top:1px solid #40444b;padding-top:6px;">Epic Games • Free Games Bot</div>
+        </div>
+    </div>
+</div>
+
+</div><!-- end flex wrapper -->
+
+<script>
+const GUILD_ID = "{{ guild.id }}";
+const PLATFORM_COLORS = {
+    epic: '#2d2d2d', steam: '#1b2838', gog: '#7c3aed',
+    ubisoft: '#0070f3', origin: '#f26000', humble: '#cc3d0d', other: '#5865f2'
+};
+const PLATFORM_LABELS = {
+    epic: 'Epic Games', steam: 'Steam', gog: 'GOG',
+    ubisoft: 'Ubisoft', origin: 'Origin / EA', humble: 'Humble Bundle', other: 'Other'
+};
+const CATEGORY_LABELS = {
+    free_to_keep: '🎁 Free to Keep',
+    free_weekend: '⏳ Free Weekend',
+    other_freebies: '🎮 Other Freebies',
+    gamedev_assets: '🛠️ Game Dev Asset',
+    giveaways_rewards: '🎟️ Giveaway / Reward'
+};
+
+function updatePreview() {
+    // First checked platform
+    const platEl = document.querySelector('input[name^="platform_"]:checked');
+    const platform = platEl ? platEl.name.replace('platform_', '') : 'epic';
+    const color = PLATFORM_COLORS[platform] || '#5865f2';
+    document.getElementById('embed-preview').style.borderLeftColor = color;
+    document.getElementById('prev-platform').textContent = PLATFORM_LABELS[platform] || platform;
+    document.getElementById('prev-footer').textContent = (PLATFORM_LABELS[platform] || platform) + ' • Free Games Bot';
+
+    // First checked category
+    const catEl = document.querySelector('input[name^="filter_"]:checked');
+    const cat = catEl ? catEl.name.replace('filter_', '') : 'free_to_keep';
+    document.getElementById('prev-category').textContent = CATEGORY_LABELS[cat] || cat;
+}
+
+function sendTest(category) {
+    const btn = event.target;
+    btn.disabled = true;
+    const status = document.getElementById('test-status');
+    status.textContent = 'Sending…';
+    const csrf = document.querySelector('input[name="_csrf_token"]').value;
+    const body = new FormData();
+    body.append('_csrf_token', csrf);
+    fetch(`/freestuff/${GUILD_ID}/test/${category}`, {method: 'POST', body})
+    .then(r => r.json())
+    .then(d => { status.textContent = d.message; })
+    .catch(() => { status.textContent = 'Request failed.'; })
+    .finally(() => { btn.disabled = false; });
+}
+
+document.querySelectorAll('input[type=checkbox]').forEach(el => el.addEventListener('change', updatePreview));
+updatePreview();
+</script>
 {% endblock %}

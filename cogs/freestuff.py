@@ -19,14 +19,31 @@ EPIC_API = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotio
 REDDIT_URL = "https://www.reddit.com/r/FreeGameFindings/new.json?limit=25"
 
 PLATFORM_COLORS = {
-    "epic": 0x2F2F2F,
-    "steam": 0x1B2838,
-    "gog": 0x86328A,
-    "ubisoft": 0x0070FF,
-    "origin": 0xF56C2D,
-    "humble": 0xCC2929,
-    "other": 0x7289DA,
+    "epic":    0x2D2D2D,
+    "steam":   0x1B2838,
+    "gog":     0x7C3AED,
+    "ubisoft": 0x0070F3,
+    "origin":  0xF26000,
+    "humble":  0xCC3D0D,
+    "other":   0x5865F2,
 }
+
+CATEGORY_LABELS = {
+    "free_to_keep":      "🎁 Free to Keep",
+    "free_weekend":      "⏳ Free Weekend",
+    "other_freebies":    "🎮 Freebie",
+    "gamedev_assets":    "🛠️ Game Dev Asset",
+    "giveaways_rewards": "🎟️ Giveaway / Reward",
+}
+
+CATEGORY_KEYWORDS = {
+    "free_weekend":      ["free weekend", "free to play weekend", "[weekend]", "play for free this weekend"],
+    "gamedev_assets":    ["asset", "game dev", "unity", "unreal", "blender", "template", "plugin", "tool for dev"],
+    "giveaways_rewards": ["giveaway", "key giveaway", "redeem", "reward code", "prime gaming", "humble choice"],
+    "other_freebies":    ["dlc", "in-game", "cosmetic", "skin", "pack", "bundle", "item", "loot"],
+}
+
+ALL_CATEGORIES = ["free_to_keep", "free_weekend", "other_freebies", "gamedev_assets", "giveaways_rewards"]
 
 REDDIT_PLATFORM_RE = re.compile(r"\[(Steam|Epic|GOG|Ubisoft|Origin|Humble|Epic Games)\]", re.IGNORECASE)
 
@@ -41,6 +58,32 @@ PLATFORM_LABELS = {
     "humble": "Humble Bundle",
     "other": "Other",
 }
+
+
+def classify_item(title: str, flair: str | None, platform: str, is_free_weekend: bool) -> str:
+    text = (title + " " + (flair or "")).lower()
+    if is_free_weekend:
+        return "free_weekend"
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            return category
+    return "free_to_keep"
+
+
+def build_game_embed(title: str, url: str, platform: str, image_url: str,
+                     original_price: str, end_date: str, category: str) -> discord.Embed:
+    color = PLATFORM_COLORS.get(platform, 0x5865F2)
+    embed = discord.Embed(title=title, url=url, color=color)
+    price_str = f"~~{original_price}~~ → **FREE**" if original_price else "**FREE**"
+    embed.add_field(name="Price", value=price_str, inline=True)
+    embed.add_field(name="Category", value=CATEGORY_LABELS.get(category, category), inline=True)
+    embed.add_field(name="Platform", value=PLATFORM_LABELS.get(platform, platform.title()), inline=True)
+    if end_date:
+        embed.add_field(name="Free until", value=end_date, inline=False)
+    if image_url:
+        embed.set_image(url=image_url)
+    embed.set_footer(text=f"{PLATFORM_LABELS.get(platform, platform.title())} • Free Games Bot")
+    return embed
 
 PLATFORM_EMOJIS = {
     "steam": "\U0001f3ae",      # controller
@@ -265,14 +308,30 @@ class FreeStuff(commands.Cog):
                         price_info = (elem.get("price") or {}).get("totalPrice", {})
                         original = (price_info.get("fmtPrice") or {}).get("originalPrice", "")
 
+                        # Detect free weekend: end date within 4 days
+                        end_date_str = offer.get("endDate", "")
+                        is_free_weekend = False
+                        if end_date_str:
+                            try:
+                                end_dt = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
+                                delta = end_dt - datetime.now(timezone.utc)
+                                is_free_weekend = 0 < delta.days <= 4
+                            except Exception:
+                                pass
+
+                        category = classify_item(title, None, "epic", is_free_weekend)
+                        end_date_display = end_date_str[:10] if end_date_str else ""
+
                         game_id = await db.add_free_game(
                             title=title, url=url, platform="epic",
                             image_url=image_url, original_price=original, source="epic",
+                            category=category,
                         )
                         if game_id:
                             new_games.append({
                                 "title": title, "url": url, "platform": "epic",
                                 "image_url": image_url, "original_price": original,
+                                "end_date": end_date_display, "category": category,
                             })
         except Exception:
             log.exception("Error fetching Epic free games")
@@ -301,15 +360,21 @@ class FreeStuff(commands.Cog):
                 if platform == "epic games":
                     platform = "epic"
 
+                flair = pdata.get("link_flair_text") or pdata.get("link_flair_richtext", [{}])[0].get("t", "")
+                category = classify_item(title, flair, platform, False)
+                image_url = pdata.get("thumbnail", "")
+                if not image_url.startswith("http"):
+                    image_url = ""
+
                 game_id = await db.add_free_game(
                     title=title, url=url, platform=platform,
-                    source="reddit",
+                    source="reddit", category=category,
                 )
                 if game_id:
                     new_games.append({
                         "title": title, "url": url, "platform": platform,
-                        "image_url": pdata.get("thumbnail") if pdata.get("thumbnail", "").startswith("http") else "",
-                        "original_price": "",
+                        "image_url": image_url, "original_price": "",
+                        "end_date": "", "category": category,
                     })
         except Exception:
             log.exception("Error fetching Reddit free games")
@@ -343,25 +408,26 @@ class FreeStuff(commands.Cog):
                 continue
 
             allowed_platforms = json.loads(cfg.get("platforms", "[]"))
+            guild_filters = json.loads(cfg.get("content_filters") or
+                '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
             mention_role_id = cfg.get("mention_role_id")
             content = f"<@&{mention_role_id}>" if mention_role_id else None
 
             for game in games:
                 if allowed_platforms and game["platform"] not in allowed_platforms:
                     continue
+                if game.get("category", "free_to_keep") not in guild_filters:
+                    continue
 
-                color = PLATFORM_COLORS.get(game["platform"], 0x7289DA)
-                embed = discord.Embed(
-                    title=f"Free: {game['title']}",
+                embed = build_game_embed(
+                    title=game["title"],
                     url=game["url"],
-                    color=color,
+                    platform=game["platform"],
+                    image_url=game.get("image_url", ""),
+                    original_price=game.get("original_price", ""),
+                    end_date=game.get("end_date", ""),
+                    category=game.get("category", "free_to_keep"),
                 )
-                embed.add_field(name="Platform", value=game["platform"].title(), inline=True)
-                if game.get("original_price"):
-                    embed.add_field(name="Original Price", value=game["original_price"], inline=True)
-                if game.get("image_url"):
-                    embed.set_thumbnail(url=game["image_url"])
-                embed.set_footer(text="Free Game Alert")
                 embed.timestamp = datetime.now(timezone.utc)
 
                 tasks.append(self._send_with_ratelimit(channel, embed, content=content))
