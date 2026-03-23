@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import discord
 from quart import Blueprint, current_app, flash, redirect, render_template, request, url_for
 
 from .auth import login_required
