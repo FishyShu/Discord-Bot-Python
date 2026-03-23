@@ -41,19 +41,33 @@
     <div class="card" style="margin-top:1rem;padding:1rem;">
         <h3 style="margin-bottom:0.75rem;">Game Filters</h3>
         {% if game_toggles %}
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+            <small style="color:var(--text-muted);">Toggle games to receive notifications for. If none enabled, all games trigger alerts.</small>
+            <label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;margin-left:1rem;">
+                <input type="checkbox" id="active-only-toggle" onchange="filterActiveOnly(this.checked)" style="margin-right:4px;">
+                Show active only
+            </label>
+        </div>
         <div class="table-wrap">
-            <table>
+            <table id="game-filter-table">
                 <thead>
-                    <tr><th>Game</th><th>Enabled</th></tr>
+                    <tr><th>Game</th><th>Status</th><th>Enabled</th></tr>
                 </thead>
                 <tbody>
-                    {% for game, enabled in game_toggles.items() %}
-                    <tr>
+                    {% for game, meta in game_toggles.items() %}
+                    <tr data-active="{{ 'true' if meta.is_active else 'false' }}">
                         <td>{{ game }}</td>
+                        <td>
+                            {% if meta.is_active %}
+                                <span style="color:#3ba55d;">🟢 Active</span>
+                            {% else %}
+                                <span style="color:#ed4245;">🔴 Ended {% if meta.end_date %}{{ meta.end_date }}{% endif %}</span>
+                            {% endif %}
+                        </td>
                         <td>
                             <input type="hidden" name="game_names" value="{{ game }}">
                             <div class="toggle">
-                                <input type="checkbox" name="game_toggle_{{ game }}" id="game_toggle_{{ game }}" {% if enabled %}checked{% endif %}>
+                                <input type="checkbox" name="game_toggle_{{ game }}" id="game_toggle_{{ game }}" {% if meta.enabled %}checked{% endif %}>
                                 <label for="game_toggle_{{ game }}"></label>
                             </div>
                         </td>
@@ -62,10 +76,35 @@
                 </tbody>
             </table>
         </div>
-        <small style="color:var(--text-muted);">If no games are enabled, all games will trigger notifications.</small>
         {% else %}
-        <p class="td-muted">No active drops found. Games will appear here when the bot discovers active Twitch Drop campaigns.</p>
+        <p class="td-muted">No cached drops found. Games will appear here when the bot discovers active Twitch Drop campaigns.</p>
         {% endif %}
+    </div>
+
+    <div class="form-group" style="margin-top:1rem;">
+        <label>Embed Customization</label>
+        <small>Control which fields appear in drop notification embeds.</small>
+
+        <!-- Color override -->
+        <div style="margin-top:0.75rem;">
+            <label for="embed_color" style="font-size:0.85rem;">Color override <span style="color:var(--text-muted)">(leave blank for default Twitch purple)</span></label>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.25rem;">
+                <input type="color" id="embed_color_picker" value="{{ embed_settings.color or '#9146ff' }}" style="width:40px;height:32px;border:none;cursor:pointer;background:none;" oninput="syncColorFromPicker(this)">
+                <input type="text" name="embed_color" id="embed_color" value="{{ embed_settings.color }}" placeholder="e.g. #9146ff" style="width:120px;" oninput="syncColorFromText(this)">
+                <button type="button" onclick="clearColor()" class="btn btn-secondary" style="font-size:0.8rem;padding:4px 10px;">Clear</button>
+            </div>
+        </div>
+
+        <!-- Field toggles -->
+        <div style="margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.5rem 1.5rem;">
+            {% for field, label in [('game','🎮 Game'), ('period','📅 Period'), ('description','📝 Description'), ('image','🖼️ Reward image'), ('link','🔗 Details link')] %}
+            <div class="toggle">
+                <input type="checkbox" name="embed_show_{{ field }}" id="embed_show_{{ field }}"
+                       {% if embed_settings['show_' ~ field] %}checked{% endif %}>
+                <label for="embed_show_{{ field }}">{{ label }}</label>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 
     <div class="btn-group" style="margin-top:1rem;">
@@ -125,4 +164,28 @@
     </div>
 </div>
 {% endif %}
+
+<script>
+function filterActiveOnly(activeOnly) {
+    document.querySelectorAll('#game-filter-table tbody tr').forEach(row => {
+        row.style.display = (!activeOnly || row.dataset.active === 'true') ? '' : 'none';
+    });
+}
+
+function syncColorFromPicker(input) {
+    document.getElementById('embed_color').value = input.value;
+}
+
+function syncColorFromText(input) {
+    const v = input.value.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+        document.getElementById('embed_color_picker').value = v;
+    }
+}
+
+function clearColor() {
+    document.getElementById('embed_color').value = '';
+    document.getElementById('embed_color_picker').value = '#9146ff';
+}
+</script>
 {% endblock %}

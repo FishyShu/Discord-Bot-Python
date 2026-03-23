@@ -355,6 +355,19 @@ async def init_db():
             await db.execute("ALTER TABLE free_games ADD COLUMN category TEXT NOT NULL DEFAULT 'free_to_keep'")
         except Exception:
             pass
+        # Add embed customization columns to twitch_drops_config
+        for col, definition in [
+            ("embed_show_game",        "INTEGER NOT NULL DEFAULT 1"),
+            ("embed_show_period",      "INTEGER NOT NULL DEFAULT 1"),
+            ("embed_show_description", "INTEGER NOT NULL DEFAULT 1"),
+            ("embed_show_image",       "INTEGER NOT NULL DEFAULT 1"),
+            ("embed_show_link",        "INTEGER NOT NULL DEFAULT 1"),
+            ("embed_color",            "TEXT"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE twitch_drops_config ADD COLUMN {col} {definition}")
+            except Exception:
+                pass
         await db.commit()
 
 
@@ -1206,6 +1219,21 @@ async def get_active_drops() -> list[dict]:
         cursor = await db.execute(
             "SELECT * FROM twitch_drops_cache WHERE end_date IS NULL OR end_date >= datetime('now') ORDER BY discovered_at DESC"
         )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def get_all_cached_game_statuses() -> list[dict]:
+    """Return one row per unique game_name with is_active flag and latest end_date."""
+    async with _connect() as db:
+        cursor = await db.execute("""
+            SELECT game_name,
+                   MAX(end_date) AS end_date,
+                   MAX(CASE WHEN end_date IS NULL OR end_date >= datetime('now') THEN 1 ELSE 0 END) AS is_active
+            FROM twitch_drops_cache
+            GROUP BY game_name
+            ORDER BY is_active DESC, game_name ASC
+        """)
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
 

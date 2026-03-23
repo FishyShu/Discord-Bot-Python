@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 
 import discord
 from quart import Blueprint, current_app, redirect, render_template, request, url_for, flash
 
 from .auth import login_required
 from . import db
+from cogs.twitch_drops import build_drop_embed
 
 twitch_drops_bp = Blueprint("twitch_drops", __name__)
 
@@ -36,21 +36,36 @@ async def twitch_drops_edit(guild_id: int):
     cfg = await db.get_twitch_drops_config(str(guild_id)) or {}
     channels = sorted(guild.text_channels, key=lambda c: c.position)
     active_drops = await db.get_active_drops()
+    all_game_statuses = await db.get_all_cached_game_statuses()
 
     # Parse game_filter (handle both old list and new dict formats)
     raw_filter = json.loads(cfg.get("game_filter", "{}")) if cfg else {}
     if isinstance(raw_filter, list):
-        game_filter_dict = {g: True for g in raw_filter}
+        enabled_set = {g.lower() for g in raw_filter}
+        raw_filter = {g: True for g in raw_filter}
     elif isinstance(raw_filter, dict):
-        game_filter_dict = raw_filter
+        enabled_set = {g.lower() for g, on in raw_filter.items() if on}
     else:
-        game_filter_dict = {}
+        enabled_set = set()
+        raw_filter = {}
 
-    # Collect unique game names from active drops and merge with existing filter
-    active_games = sorted(set(d["game_name"] for d in active_drops))
     game_toggles = {}
-    for game in active_games:
-        game_toggles[game] = game_filter_dict.get(game, False)
+    for g in all_game_statuses:
+        name = g["game_name"]
+        game_toggles[name] = {
+            "enabled": name.lower() in enabled_set or not raw_filter,
+            "is_active": bool(g["is_active"]),
+            "end_date": (g.get("end_date") or "")[:10],
+        }
+
+    embed_settings = {
+        "show_game":        bool(cfg.get("embed_show_game", 1)),
+        "show_period":      bool(cfg.get("embed_show_period", 1)),
+        "show_description": bool(cfg.get("embed_show_description", 1)),
+        "show_image":       bool(cfg.get("embed_show_image", 1)),
+        "show_link":        bool(cfg.get("embed_show_link", 1)),
+        "color":            cfg.get("embed_color") or "",
+    }
 
     roles = sorted(guild.roles, key=lambda r: r.position, reverse=True)
 
@@ -61,6 +76,7 @@ async def twitch_drops_edit(guild_id: int):
         channels=channels,
         active_drops=active_drops,
         game_toggles=game_toggles,
+        embed_settings=embed_settings,
         roles=roles,
     )
 
@@ -92,6 +108,12 @@ async def twitch_drops_save(guild_id: int):
         enabled=enabled,
         game_filter=json.dumps(game_filter_dict),
         mention_role_id=mention_role_id,
+        embed_show_game=1 if form.get("embed_show_game") else 0,
+        embed_show_period=1 if form.get("embed_show_period") else 0,
+        embed_show_description=1 if form.get("embed_show_description") else 0,
+        embed_show_image=1 if form.get("embed_show_image") else 0,
+        embed_show_link=1 if form.get("embed_show_link") else 0,
+        embed_color=form.get("embed_color", "").strip() or None,
     )
 
     cog = bot.get_cog("TwitchDrops")
@@ -121,15 +143,25 @@ async def twitch_drops_test(guild_id: int):
         await flash("Notification channel not found.", "danger")
         return redirect(url_for("twitch_drops.twitch_drops_edit", guild_id=guild_id))
 
-    embed = discord.Embed(
-        title="New Twitch Drop: Exclusive In-Game Reward",
-        color=0x9146FF,
+    test_drop = {
+        "drop_name": "Exclusive In-Game Reward",
+        "game_name": "Example Game",
+        "start_date": "2026-03-01",
+        "end_date": "2026-03-31",
+        "description": "Watch 2 hours of any Example Game stream to earn an exclusive cosmetic item!",
+        "image_url": "",
+        "details_url": "",
+    }
+    embed = build_drop_embed(
+        test_drop,
+        embed_color=cfg.get("embed_color") or None,
+        show_game=bool(cfg.get("embed_show_game", 1)),
+        show_period=bool(cfg.get("embed_show_period", 1)),
+        show_description=bool(cfg.get("embed_show_description", 1)),
+        show_image=bool(cfg.get("embed_show_image", 1)),
+        show_link=bool(cfg.get("embed_show_link", 1)),
     )
-    embed.add_field(name="Game", value="Example Game", inline=True)
-    embed.add_field(name="Period", value="2026-03-01 — 2026-03-31", inline=True)
-    embed.add_field(name="Description", value="Watch 2 hours of any Example Game stream to earn an exclusive cosmetic item!", inline=False)
     embed.set_footer(text="Twitch Drops Alert (TEST)")
-    embed.timestamp = datetime.now(timezone.utc)
 
     mention_role_id = cfg.get("mention_role_id")
     content = f"<@&{mention_role_id}>" if mention_role_id else None

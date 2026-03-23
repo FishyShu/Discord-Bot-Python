@@ -18,6 +18,33 @@ log = logging.getLogger(__name__)
 TWITCH_DROP_COLOR = 0x9146FF
 
 
+def build_drop_embed(
+    drop: dict,
+    *,
+    embed_color: str | None = None,
+    show_game: bool = True,
+    show_period: bool = True,
+    show_description: bool = True,
+    show_image: bool = True,
+    show_link: bool = True,
+) -> discord.Embed:
+    color = int(embed_color.lstrip("#"), 16) if embed_color else TWITCH_DROP_COLOR
+    embed = discord.Embed(title=f"New Twitch Drop: {drop['drop_name'][:100]}", color=color)
+    if show_game:
+        embed.add_field(name="Game", value=drop["game_name"], inline=True)
+    if show_period and drop.get("start_date") and drop.get("end_date"):
+        embed.add_field(name="Period", value=f"{drop['start_date'][:10]} — {drop['end_date'][:10]}", inline=True)
+    if show_description and drop.get("description"):
+        embed.add_field(name="Description", value=drop["description"][:200], inline=False)
+    if show_image and drop.get("image_url"):
+        embed.set_thumbnail(url=drop["image_url"])
+    if show_link and drop.get("details_url"):
+        embed.add_field(name="Link", value=f"[View Details]({drop['details_url']})", inline=False)
+    embed.set_footer(text="Twitch Drops Alert")
+    embed.timestamp = datetime.now(timezone.utc)
+    return embed
+
+
 class TwitchDrops(commands.Cog):
     """Notifies servers about new Twitch Drops campaigns."""
 
@@ -98,8 +125,17 @@ class TwitchDrops(commands.Cog):
         await self.refresh_cache()
         await interaction.response.send_message("Twitch Drops notifications disabled.", ephemeral=True)
 
+    async def _game_autocomplete(self, interaction: discord.Interaction, current: str):
+        games = await db.get_all_cached_game_statuses()
+        return [
+            app_commands.Choice(name=g["game_name"], value=g["game_name"])
+            for g in games
+            if current.lower() in g["game_name"].lower()
+        ][:25]
+
     @drops_group.command(name="filter", description="Set game filter for drop notifications")
     @app_commands.describe(games="Comma-separated list of game names to filter, or leave empty to clear")
+    @app_commands.autocomplete(games=_game_autocomplete)
     async def drops_filter(self, interaction: discord.Interaction, games: str = ""):
         guild_id = str(interaction.guild_id)
         if games.strip():
@@ -114,6 +150,51 @@ class TwitchDrops(commands.Cog):
             )
         else:
             await interaction.response.send_message("Game filter cleared — all games.", ephemeral=True)
+
+    @drops_group.command(name="config", description="Show current Twitch Drops configuration for this server")
+    async def drops_config(self, interaction: discord.Interaction):
+        guild_id = str(interaction.guild_id)
+        cfg = await db.get_twitch_drops_config(guild_id)
+        if not cfg:
+            await interaction.response.send_message("No Twitch Drops configuration found. Use `/twitchdrops setup` to get started.", ephemeral=True)
+            return
+
+        embed = discord.Embed(title="Twitch Drops Configuration", color=TWITCH_DROP_COLOR)
+        channel = interaction.guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
+        embed.add_field(name="Channel", value=channel.mention if channel else "Not set", inline=True)
+        embed.add_field(name="Enabled", value="Yes" if cfg.get("enabled") else "No", inline=True)
+
+        mention_role_id = cfg.get("mention_role_id")
+        if mention_role_id:
+            role = interaction.guild.get_role(int(mention_role_id))
+            embed.add_field(name="Mention Role", value=role.mention if role else f"<@&{mention_role_id}>", inline=True)
+
+        raw_filter = json.loads(cfg.get("game_filter", "{}"))
+        if isinstance(raw_filter, list):
+            enabled_games = raw_filter
+        elif isinstance(raw_filter, dict):
+            enabled_games = [g for g, on in raw_filter.items() if on]
+        else:
+            enabled_games = []
+
+        if enabled_games:
+            game_statuses = {g["game_name"].lower(): g for g in await db.get_all_cached_game_statuses()}
+            lines = []
+            for game_name in enabled_games:
+                status = game_statuses.get(game_name.lower())
+                if status and status["is_active"]:
+                    indicator = "🟢 Active"
+                elif status:
+                    end = (status.get("end_date") or "")[:10]
+                    indicator = f"🔴 Ended {end}" if end else "🔴 Inactive"
+                else:
+                    indicator = "❓ Unknown"
+                lines.append(f"• {game_name}: {indicator}")
+            embed.add_field(name="Game Filter", value="\n".join(lines), inline=False)
+        else:
+            embed.add_field(name="Game Filter", value="All games (no filter)", inline=False)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @drops_group.command(name="history", description="Show all cached Twitch Drops (including past)")
     async def drops_history(self, interaction: discord.Interaction):
@@ -363,26 +444,15 @@ class TwitchDrops(commands.Cog):
                     if drop["game_name"].lower() not in enabled_games:
                         continue
 
-                embed = discord.Embed(
-                    title=f"New Twitch Drop: {drop['drop_name'][:100]}",
-                    color=TWITCH_DROP_COLOR,
+                embed = build_drop_embed(
+                    drop,
+                    embed_color=cfg.get("embed_color") or None,
+                    show_game=bool(cfg.get("embed_show_game", 1)),
+                    show_period=bool(cfg.get("embed_show_period", 1)),
+                    show_description=bool(cfg.get("embed_show_description", 1)),
+                    show_image=bool(cfg.get("embed_show_image", 1)),
+                    show_link=bool(cfg.get("embed_show_link", 1)),
                 )
-                embed.add_field(name="Game", value=drop["game_name"], inline=True)
-                if drop.get("start_date") and drop.get("end_date"):
-                    dates = f"{drop['start_date'][:10]} — {drop['end_date'][:10]}"
-                    embed.add_field(name="Period", value=dates, inline=True)
-                if drop.get("description"):
-                    embed.add_field(
-                        name="Description",
-                        value=drop["description"][:200],
-                        inline=False,
-                    )
-                if drop.get("image_url"):
-                    embed.set_thumbnail(url=drop["image_url"])
-                if drop.get("details_url"):
-                    embed.add_field(name="Link", value=f"[View Details]({drop['details_url']})", inline=False)
-                embed.set_footer(text="Twitch Drops Alert")
-                embed.timestamp = datetime.now(timezone.utc)
 
                 send_tasks.append(self._send_with_ratelimit(channel, embed, content=content))
 
