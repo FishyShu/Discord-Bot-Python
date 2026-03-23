@@ -70,17 +70,32 @@ def classify_item(title: str, flair: str | None, platform: str, is_free_weekend:
     return "free_to_keep"
 
 
-def build_game_embed(title: str, url: str, platform: str, image_url: str,
-                     original_price: str, end_date: str, category: str) -> discord.Embed:
-    color = PLATFORM_COLORS.get(platform, 0x5865F2)
+def build_game_embed(
+    title: str, url: str, platform: str, image_url: str,
+    original_price: str, end_date: str, category: str,
+    *,
+    embed_color: str | None = None,
+    show_price: bool = True,
+    show_category: bool = True,
+    show_platform: bool = True,
+    show_expiry: bool = True,
+    show_image: bool = True,
+) -> discord.Embed:
+    if embed_color:
+        color = int(embed_color.lstrip("#"), 16)
+    else:
+        color = PLATFORM_COLORS.get(platform, 0x5865F2)
     embed = discord.Embed(title=title, url=url, color=color)
-    price_str = f"~~{original_price}~~ → **FREE**" if original_price else "**FREE**"
-    embed.add_field(name="Price", value=price_str, inline=True)
-    embed.add_field(name="Category", value=CATEGORY_LABELS.get(category, category), inline=True)
-    embed.add_field(name="Platform", value=PLATFORM_LABELS.get(platform, platform.title()), inline=True)
-    if end_date:
+    if show_price:
+        price_str = f"~~{original_price}~~ → **FREE**" if original_price else "**FREE**"
+        embed.add_field(name="Price", value=price_str, inline=True)
+    if show_category:
+        embed.add_field(name="Category", value=CATEGORY_LABELS.get(category, category), inline=True)
+    if show_platform:
+        embed.add_field(name="Platform", value=PLATFORM_LABELS.get(platform, platform.title()), inline=True)
+    if show_expiry and end_date:
         embed.add_field(name="Free until", value=end_date, inline=False)
-    if image_url:
+    if show_image and image_url:
         embed.set_image(url=image_url)
     embed.set_footer(text=f"{PLATFORM_LABELS.get(platform, platform.title())} • Free Games Bot")
     return embed
@@ -428,6 +443,12 @@ class FreeStuff(commands.Cog):
                     original_price=game.get("original_price", ""),
                     end_date=game.get("end_date", ""),
                     category=game.get("category", "free_to_keep"),
+                    embed_color=cfg.get("embed_color") or None,
+                    show_price=bool(cfg.get("embed_show_price", 1)),
+                    show_category=bool(cfg.get("embed_show_category", 1)),
+                    show_platform=bool(cfg.get("embed_show_platform", 1)),
+                    show_expiry=bool(cfg.get("embed_show_expiry", 1)),
+                    show_image=bool(cfg.get("embed_show_image", 1)),
                 )
                 embed.timestamp = datetime.now(timezone.utc)
 

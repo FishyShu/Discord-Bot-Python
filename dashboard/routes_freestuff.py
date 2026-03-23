@@ -93,6 +93,15 @@ async def freestuff_edit(guild_id: int):
 
     roles = sorted(guild.roles, key=lambda r: r.position, reverse=True)
 
+    embed_settings = {
+        "show_price":    bool(cfg.get("embed_show_price", 1)),
+        "show_category": bool(cfg.get("embed_show_category", 1)),
+        "show_platform": bool(cfg.get("embed_show_platform", 1)),
+        "show_expiry":   bool(cfg.get("embed_show_expiry", 1)),
+        "show_image":    bool(cfg.get("embed_show_image", 1)),
+        "color":         cfg.get("embed_color") or "",
+    }
+
     return await render_template(
         "freestuff_edit.html",
         guild=guild,
@@ -103,6 +112,7 @@ async def freestuff_edit(guild_id: int):
         content_filters=content_filters,
         roles=roles,
         all_categories=ALL_CATEGORIES,
+        embed_settings=embed_settings,
     )
 
 
@@ -137,6 +147,12 @@ async def freestuff_save(guild_id: int):
         platforms=json.dumps(selected_platforms),
         content_filters=json.dumps(selected_filters),
         mention_role_id=mention_role_id,
+        embed_show_price=1 if form.get("embed_show_price") else 0,
+        embed_show_category=1 if form.get("embed_show_category") else 0,
+        embed_show_platform=1 if form.get("embed_show_platform") else 0,
+        embed_show_expiry=1 if form.get("embed_show_expiry") else 0,
+        embed_show_image=1 if form.get("embed_show_image") else 0,
+        embed_color=form.get("embed_color", "").strip() or None,
     )
 
     cog = bot.get_cog("FreeStuff")
@@ -178,6 +194,12 @@ async def freestuff_test(guild_id: int, category: str):
         original_price=ex["original_price"],
         end_date=ex["end_date"],
         category=ex["category"],
+        embed_color=cfg.get("embed_color") or None,
+        show_price=bool(cfg.get("embed_show_price", 1)),
+        show_category=bool(cfg.get("embed_show_category", 1)),
+        show_platform=bool(cfg.get("embed_show_platform", 1)),
+        show_expiry=bool(cfg.get("embed_show_expiry", 1)),
+        show_image=bool(cfg.get("embed_show_image", 1)),
     )
     embed.set_footer(text=f"{PLATFORM_LABELS.get(ex['platform'], ex['platform'].title())} • Free Games Bot (TEST)")
     embed.timestamp = datetime.now(timezone.utc)

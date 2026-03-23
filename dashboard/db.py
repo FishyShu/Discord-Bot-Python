@@ -337,6 +337,19 @@ async def init_db():
             )
         except Exception:
             pass
+        # Add embed customization columns to freestuff_config
+        for col, definition in [
+            ("embed_show_price",    "INTEGER NOT NULL DEFAULT 1"),
+            ("embed_show_category", "INTEGER NOT NULL DEFAULT 1"),
+            ("embed_show_platform", "INTEGER NOT NULL DEFAULT 1"),
+            ("embed_show_expiry",   "INTEGER NOT NULL DEFAULT 1"),
+            ("embed_show_image",    "INTEGER NOT NULL DEFAULT 1"),
+            ("embed_color",         "TEXT"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE freestuff_config ADD COLUMN {col} {definition}")
+            except Exception:
+                pass
         # Add category to free_games
         try:
             await db.execute("ALTER TABLE free_games ADD COLUMN category TEXT NOT NULL DEFAULT 'free_to_keep'")

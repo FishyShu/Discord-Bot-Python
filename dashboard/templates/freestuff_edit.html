@@ -60,21 +60,51 @@
     <div class="form-group">
         <label>Content Filters</label>
         <small>Only send notifications for selected content types.</small>
-        <div style="display:flex;flex-wrap:wrap;gap:1rem;margin-top:0.5rem;">
-            {% set category_labels = {
-                'free_to_keep': '🎁 Free to Keep',
-                'free_weekend': '⏳ Free Weekend',
-                'other_freebies': '🎮 Other Freebies',
-                'gamedev_assets': '🛠️ Game Dev Assets',
-                'giveaways_rewards': '🎟️ Giveaways & Rewards'
-            } %}
-            {% for cat in all_categories %}
+        {% set category_meta = [
+            ('free_to_keep',      '🎁 Free to Keep',        'Games you can claim and keep forever (e.g. Epic weekly free games)'),
+            ('free_weekend',      '⏳ Free Weekend',         'Temporarily free to play for a limited weekend window'),
+            ('other_freebies',    '🎮 Other Freebies',       'DLC, cosmetics, in-game items and content packs'),
+            ('gamedev_assets',    '🛠️ Game Dev Assets',      'Unity/Unreal assets, tools and templates for developers'),
+            ('giveaways_rewards', '🎟️ Giveaways & Rewards',  'Key giveaways, Prime Gaming drops, redemption codes'),
+        ] %}
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0.75rem;margin-top:0.5rem;">
+            {% for cat, label, desc in category_meta %}
+            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:0.75rem;">
+                <div class="toggle">
+                    <input type="checkbox" name="filter_{{ cat }}" id="filter_{{ cat }}"
+                           value="{{ cat }}"
+                           {% if cat in content_filters or not cfg %}checked{% endif %}
+                           onchange="updatePreview()">
+                    <label for="filter_{{ cat }}"><strong>{{ label }}</strong></label>
+                </div>
+                <small style="color:var(--text-muted);display:block;margin-top:0.35rem;">{{ desc }}</small>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label>Embed Customization</label>
+        <small>Control which fields appear in game notification embeds.</small>
+
+        <!-- Color override -->
+        <div style="margin-top:0.75rem;">
+            <label for="embed_color" style="font-size:0.85rem;">Color override <span style="color:var(--text-muted)">(leave blank for per-platform colors)</span></label>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.25rem;">
+                <input type="color" id="embed_color_picker" value="{{ embed_settings.color or '#5865f2' }}" style="width:40px;height:32px;border:none;cursor:pointer;background:none;" oninput="syncColorFromPicker(this)">
+                <input type="text" name="embed_color" id="embed_color" value="{{ embed_settings.color }}" placeholder="e.g. #5865f2" style="width:120px;" oninput="syncColorFromText(this)">
+                <button type="button" onclick="clearColor()" class="btn btn-secondary" style="font-size:0.8rem;padding:4px 10px;">Clear</button>
+            </div>
+        </div>
+
+        <!-- Field toggles -->
+        <div style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-top:1rem;">
+            {% for field, label in [('price','💰 Price'), ('category','🏷️ Category'), ('platform','🖥️ Platform'), ('expiry','📅 Expiry date'), ('image','🖼️ Banner image')] %}
             <div class="toggle">
-                <input type="checkbox" name="filter_{{ cat }}" id="filter_{{ cat }}"
-                       value="{{ cat }}"
-                       {% if cat in content_filters or not cfg %}checked{% endif %}
+                <input type="checkbox" name="embed_show_{{ field }}" id="embed_show_{{ field }}"
+                       {% if embed_settings['show_' ~ field] %}checked{% endif %}
                        onchange="updatePreview()">
-                <label for="filter_{{ cat }}">{{ category_labels[cat] }}</label>
+                <label for="embed_show_{{ field }}">{{ label }}</label>
             </div>
             {% endfor %}
         </div>
@@ -143,18 +173,22 @@
         <div id="embed-preview" style="border-left:4px solid #2d2d2d;padding:12px 14px;background:#2f3136;border-radius:4px;">
             <div id="prev-title" style="color:#fff;font-weight:bold;font-size:0.95rem;margin-bottom:4px;">Celeste</div>
             <div style="display:flex;gap:1rem;margin-bottom:6px;flex-wrap:wrap;">
-                <div>
+                <div id="prev-price-wrap">
                     <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Price</div>
                     <div id="prev-price" style="color:#dcddde;font-size:0.85rem;">~~$19.99~~ → <strong>FREE</strong></div>
                 </div>
-                <div>
+                <div id="prev-category-wrap">
                     <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Category</div>
                     <div id="prev-category" style="color:#dcddde;font-size:0.85rem;">🎁 Free to Keep</div>
                 </div>
-                <div>
+                <div id="prev-platform-wrap">
                     <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Platform</div>
                     <div id="prev-platform" style="color:#dcddde;font-size:0.85rem;">Epic Games</div>
                 </div>
+            </div>
+            <div id="prev-expiry-wrap" style="margin-bottom:6px;display:none;">
+                <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Free until</div>
+                <div style="color:#dcddde;font-size:0.85rem;">2026-04-01</div>
             </div>
             <img id="prev-image" src="" alt="" style="width:100%;border-radius:4px;margin-top:4px;display:none;">
             <div id="prev-footer" style="color:#72767d;font-size:0.72rem;margin-top:8px;border-top:1px solid #40444b;padding-top:6px;">Epic Games • Free Games Bot</div>
@@ -183,18 +217,54 @@ const CATEGORY_LABELS = {
 };
 
 function updatePreview() {
-    // First checked platform
+    // Color: custom override or per-platform
+    const customColor = document.getElementById('embed_color').value.trim();
     const platEl = document.querySelector('input[name^="platform_"]:checked');
     const platform = platEl ? platEl.name.replace('platform_', '') : 'epic';
-    const color = PLATFORM_COLORS[platform] || '#5865f2';
+    const color = (/^#[0-9a-fA-F]{6}$/.test(customColor)) ? customColor : (PLATFORM_COLORS[platform] || '#5865f2');
     document.getElementById('embed-preview').style.borderLeftColor = color;
+
+    // Platform field
     document.getElementById('prev-platform').textContent = PLATFORM_LABELS[platform] || platform;
     document.getElementById('prev-footer').textContent = (PLATFORM_LABELS[platform] || platform) + ' • Free Games Bot';
 
-    // First checked category
+    // Category field
     const catEl = document.querySelector('input[name^="filter_"]:checked');
     const cat = catEl ? catEl.name.replace('filter_', '') : 'free_to_keep';
     document.getElementById('prev-category').textContent = CATEGORY_LABELS[cat] || cat;
+
+    // Field visibility
+    const showPrice    = document.getElementById('embed_show_price').checked;
+    const showCategory = document.getElementById('embed_show_category').checked;
+    const showPlatform = document.getElementById('embed_show_platform').checked;
+    const showExpiry   = document.getElementById('embed_show_expiry').checked;
+    const showImage    = document.getElementById('embed_show_image').checked;
+
+    document.getElementById('prev-price-wrap').style.display    = showPrice    ? '' : 'none';
+    document.getElementById('prev-category-wrap').style.display = showCategory ? '' : 'none';
+    document.getElementById('prev-platform-wrap').style.display = showPlatform ? '' : 'none';
+    document.getElementById('prev-expiry-wrap').style.display   = showExpiry   ? '' : 'none';
+    // Image stays hidden in preview (no real src), just reflect toggle state
+    document.getElementById('prev-image').style.display = 'none';
+}
+
+function syncColorFromPicker(input) {
+    document.getElementById('embed_color').value = input.value;
+    updatePreview();
+}
+
+function syncColorFromText(input) {
+    const v = input.value.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+        document.getElementById('embed_color_picker').value = v;
+    }
+    updatePreview();
+}
+
+function clearColor() {
+    document.getElementById('embed_color').value = '';
+    document.getElementById('embed_color_picker').value = '#5865f2';
+    updatePreview();
 }
 
 function sendTest(category) {
