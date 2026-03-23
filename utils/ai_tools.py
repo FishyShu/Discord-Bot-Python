@@ -114,20 +114,29 @@ async def generate_image_fal(prompt: str) -> Optional[str]:
             if not request_id:
                 return _pollinations_url(prompt)
 
-            # Poll for result (up to 30s)
+            # Poll for result (up to 60s)
             import asyncio
-            for _ in range(15):
-                await asyncio.sleep(2)
+            for _ in range(20):
+                await asyncio.sleep(3)
                 async with session.get(
-                    f"https://queue.fal.run/fal-ai/flux/schnell/requests/{request_id}",
+                    f"https://queue.fal.run/fal-ai/flux/schnell/requests/{request_id}/status",
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=5),
+                    timeout=aiohttp.ClientTimeout(total=10),
                 ) as poll:
                     result = await poll.json()
                     if result.get("status") == "COMPLETED":
-                        images = result.get("response", {}).get("images", [])
-                        if images:
-                            return images[0].get("url")
+                        response_url = result.get("response_url")
+                        if response_url:
+                            async with session.get(
+                                response_url,
+                                headers=headers,
+                                timeout=aiohttp.ClientTimeout(total=10),
+                            ) as res:
+                                res_data = await res.json()
+                                images = res_data.get("images", [])
+                                if images:
+                                    return images[0].get("url")
+                        break
                     elif result.get("status") in ("FAILED", "CANCELLED"):
                         break
 
