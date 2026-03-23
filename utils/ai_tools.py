@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import random
 import urllib.parse
 from typing import Optional
 
@@ -85,7 +86,7 @@ async def generate_image_fal(prompt: str) -> Optional[str]:
     Falls back to Pollinations.ai if FAL_API_KEY is not set.
     """
     if not FAL_API_KEY:
-        return _pollinations_url(prompt)
+        return _pollinations_url(prompt, seed=random.randint(1, 999999))
 
     try:
         headers = {
@@ -136,7 +137,8 @@ async def generate_image_fal(prompt: str) -> Optional[str]:
         return _pollinations_url(prompt)
 
 
-def _pollinations_url(prompt: str) -> str:
+def _pollinations_url(prompt: str, seed: Optional[int] = None) -> str:
     """Fallback: Pollinations.ai image URL (no API key required)."""
     encoded = urllib.parse.quote(prompt)
-    return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true"
+    seed_param = f"&seed={seed}" if seed is not None else ""
+    return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true{seed_param}"

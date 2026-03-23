@@ -971,14 +971,14 @@ class AI(commands.Cog):
         for attempt in range(MAX_TRIES):
             try:
                 async with aiohttp.ClientSession() as dl_session:
-                    async with dl_session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                    async with dl_session.get(url, timeout=aiohttp.ClientTimeout(total=90)) as resp:
                         if resp.status == 200:
                             data = await resp.read()
                             break
             except Exception as e:
                 log.warning("Image download attempt %d failed: %s", attempt + 1, e)
             if attempt < MAX_TRIES - 1:
-                await asyncio.sleep(3)
+                await asyncio.sleep(5)
 
         if data:
             file = discord.File(io.BytesIO(data), filename="imagine.png")
