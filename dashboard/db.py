@@ -262,6 +262,16 @@ CREATE TABLE IF NOT EXISTS soundboard_config (
     volume_mode     TEXT NOT NULL DEFAULT 'off',
     fixed_volume    REAL NOT NULL DEFAULT 0.8
 );
+
+CREATE TABLE IF NOT EXISTS fun_config (
+    guild_id         TEXT NOT NULL,
+    command          TEXT NOT NULL,
+    enabled          INTEGER NOT NULL DEFAULT 1,
+    allowed_channels TEXT NOT NULL DEFAULT '[]',
+    cooldown         INTEGER NOT NULL DEFAULT 0,
+    allowed_roles    TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (guild_id, command)
+);
 """
 
 
@@ -1622,6 +1632,30 @@ async def get_soundboard_config(guild_id: str) -> Optional[dict]:
         cursor = await db.execute("SELECT * FROM soundboard_config WHERE guild_id = ?", (guild_id,))
         row = await cursor.fetchone()
         return dict(row) if row else None
+
+
+async def get_fun_guild_config(guild_id: str) -> dict[str, dict]:
+    """Return {command: config_dict} for all fun commands configured for this guild."""
+    async with _connect() as db:
+        cursor = await db.execute("SELECT * FROM fun_config WHERE guild_id = ?", (guild_id,))
+        rows = await cursor.fetchall()
+        return {r["command"]: dict(r) for r in rows}
+
+
+async def upsert_fun_command_config(guild_id: str, command: str, **kwargs) -> None:
+    async with _connect() as db:
+        kwargs["guild_id"] = guild_id
+        kwargs["command"] = command
+        cols = list(kwargs.keys())
+        vals = list(kwargs.values())
+        placeholders = ", ".join("?" for _ in cols)
+        updates = ", ".join(f"{k} = excluded.{k}" for k in cols if k not in ("guild_id", "command"))
+        await db.execute(
+            f"INSERT INTO fun_config ({', '.join(cols)}) VALUES ({placeholders})"
+            f" ON CONFLICT(guild_id, command) DO UPDATE SET {updates}",
+            vals,
+        )
+        await db.commit()
 
 
 async def upsert_soundboard_config(guild_id: str, **kwargs) -> None:

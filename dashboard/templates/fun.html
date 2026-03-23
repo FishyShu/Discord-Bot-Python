@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Fun Commands{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Fun Commands</h1>
+    <p>Enable, restrict, and set cooldowns for fun commands per server.</p>
+</div>
+
+<div class="server-grid">
+    {% for guild in guilds %}
+    <a href="{{ url_for('fun.fun_guild', guild_id=guild.id) }}" class="grid-link">
+        <div class="card server-card">
+            {% if guild.icon %}
+            <img src="{{ guild.icon.url }}" alt="">
+            {% else %}
+            <div class="server-icon-fallback">{{ guild.name[0] }}</div>
+            {% endif %}
+            <div class="server-info">
+                <h3>{{ guild.name }}</h3>
+                <p>
+                    {% set disabled = disabled_counts.get(guild.id, 0) %}
+                    {% if disabled == 0 %}
+                    <span class="badge badge-success">All {{ total }} enabled</span>
+                    {% elif disabled == total %}
+                    <span class="badge badge-danger">All disabled</span>
+                    {% else %}
+                    <span class="badge badge-warning">{{ disabled }} disabled</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

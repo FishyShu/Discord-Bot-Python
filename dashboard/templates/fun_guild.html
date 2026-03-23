@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Fun Commands — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <a href="{{ url_for('fun.fun_list') }}" class="btn btn-sm btn-secondary mb-1">&#8592; Back</a>
+    <h1>{{ guild.name }} — Fun Commands</h1>
+    <p>Configure each command's availability, channels, roles, and cooldown.</p>
+</div>
+
+{% for cmd in commands %}
+{% set cfg = configs[cmd.name] %}
+<form method="POST" action="{{ url_for('fun.fun_save', guild_id=guild.id, command=cmd.name) }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="card card-form mb-2">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+            <div>
+                <h3 style="margin:0;"><code>/{{ cmd.name }}</code></h3>
+                <span class="td-muted">{{ cmd.description }}</span>
+            </div>
+            <label class="toggle-label" style="margin:0;">
+                <input type="checkbox" name="enabled" class="toggle-input"
+                       {% if cfg.get('enabled', 1) %}checked{% endif %}>
+                <span class="toggle-track"></span>
+                Enabled
+            </label>
+        </div>
+
+        <div class="form-group">
+            <label for="cooldown_{{ cmd.name }}">Cooldown per user <span class="td-muted">(seconds, 0 = none)</span></label>
+            <input type="number" id="cooldown_{{ cmd.name }}" name="cooldown"
+                   value="{{ cfg.get('cooldown', 0) }}" min="0" max="3600"
+                   style="max-width:120px;">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:0.5rem;">
+            <div class="form-group">
+                <label>Allowed Channels <span class="td-muted">(empty = all)</span></label>
+                <div class="checkbox-scroll">
+                    {% set sel_channels = cfg.get('allowed_channels', '[]') | from_json_or_empty %}
+                    {% for ch in channels %}
+                    <label class="check-item">
+                        <input type="checkbox" name="allowed_channels" value="{{ ch.id }}"
+                               {% if ch.id | string in sel_channels %}checked{% endif %}>
+                        #{{ ch.name }}
+                    </label>
+                    {% endfor %}
+                    {% if not channels %}
+                    <span class="td-muted">No text channels found.</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Allowed Roles <span class="td-muted">(empty = everyone)</span></label>
+                <div class="checkbox-scroll">
+                    {% set sel_roles = cfg.get('allowed_roles', '[]') | from_json_or_empty %}
+                    {% for role in roles %}
+                    <label class="check-item">
+                        <input type="checkbox" name="allowed_roles" value="{{ role.id }}"
+                               {% if role.id | string in sel_roles %}checked{% endif %}>
+                        {{ role.name }}
+                    </label>
+                    {% endfor %}
+                    {% if not roles %}
+                    <span class="td-muted">No roles found.</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-1">Save /{{ cmd.name }}</button>
+    </div>
+</form>
+{% endfor %}
+
+<style>
+.checkbox-scroll {
+    max-height: 160px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.check-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.check-item input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+</style>
+{% endblock %}

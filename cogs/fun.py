@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import random
+import time
 from typing import Optional
 
 import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
+
+from dashboard import db
 
 log = logging.getLogger(__name__)
 
@@ -30,9 +34,68 @@ class Fun(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # {guild_id: {command: {user_id: last_used_timestamp}}}
+        self._cooldowns: dict[str, dict[str, dict[str, float]]] = {}
+
+    async def _check(self, interaction: discord.Interaction, command: str) -> bool:
+        """
+        Enforce fun command config (enabled, channel restriction, role restriction, cooldown).
+        Returns True if the command should proceed, False (and sends ephemeral error) if blocked.
+        """
+        if not interaction.guild_id:
+            return True
+
+        guild_id = str(interaction.guild_id)
+        configs = await db.get_fun_guild_config(guild_id)
+        cfg = configs.get(command, {})
+
+        # Enabled check (default: enabled)
+        if not cfg.get("enabled", 1):
+            await interaction.response.send_message(
+                f"The `/{command}` command is disabled on this server.", ephemeral=True
+            )
+            return False
+
+        # Channel restriction
+        allowed_channels = json.loads(cfg.get("allowed_channels", "[]"))
+        if allowed_channels and str(interaction.channel_id) not in allowed_channels:
+            names = ", ".join(f"<#{c}>" for c in allowed_channels)
+            await interaction.response.send_message(
+                f"`/{command}` can only be used in: {names}", ephemeral=True
+            )
+            return False
+
+        # Role restriction
+        allowed_roles = json.loads(cfg.get("allowed_roles", "[]"))
+        if allowed_roles:
+            member_role_ids = {str(r.id) for r in interaction.user.roles}
+            if not member_role_ids.intersection(allowed_roles):
+                await interaction.response.send_message(
+                    f"You don't have the required role to use `/{command}`.", ephemeral=True
+                )
+                return False
+
+        # Cooldown
+        cooldown = cfg.get("cooldown", 0)
+        if cooldown > 0:
+            user_id = str(interaction.user.id)
+            guild_cd = self._cooldowns.setdefault(guild_id, {})
+            cmd_cd = guild_cd.setdefault(command, {})
+            last = cmd_cd.get(user_id, 0)
+            remaining = cooldown - (time.monotonic() - last)
+            if remaining > 0:
+                await interaction.response.send_message(
+                    f"`/{command}` is on cooldown. Try again in **{remaining:.1f}s**.", ephemeral=True
+                )
+                return False
+            cmd_cd[user_id] = time.monotonic()
+
+        return True
 
     @app_commands.command(name="meme", description="Fetch a random meme from Reddit")
     async def meme(self, interaction: discord.Interaction):
+        if not await self._check(interaction, "meme"):
+            return
         await interaction.response.defer()
         try:
             async with aiohttp.ClientSession() as session:
@@ -55,6 +118,8 @@ class Fun(commands.Cog):
         app_commands.Choice(name=a.capitalize(), value=a) for a in _ANIMAL_TYPES
     ])
     async def animal(self, interaction: discord.Interaction, animal: str):
+        if not await self._check(interaction, "animal"):
+            return
         await interaction.response.defer()
         try:
             async with aiohttp.ClientSession() as session:
@@ -76,6 +141,8 @@ class Fun(commands.Cog):
     @app_commands.command(name="8ball", description="Ask the magic 8-ball a question")
     @app_commands.describe(question="Your question")
     async def eightball(self, interaction: discord.Interaction, question: str):
+        if not await self._check(interaction, "8ball"):
+            return
         response = random.choice(_8BALL_RESPONSES)
         embed = discord.Embed(color=0x1A1A2E)
         embed.add_field(name="🎱 Question", value=question, inline=False)
@@ -85,6 +152,8 @@ class Fun(commands.Cog):
     @app_commands.command(name="mock", description="Spongebob-mock someone's text")
     @app_commands.describe(text="Text to mock")
     async def mock(self, interaction: discord.Interaction, text: str):
+        if not await self._check(interaction, "mock"):
+            return
         mocked = "".join(
             c.upper() if i % 2 == 0 else c.lower() for i, c in enumerate(text)
         )
@@ -93,13 +162,12 @@ class Fun(commands.Cog):
     @app_commands.command(name="avatar", description="Show a user's avatar")
     @app_commands.describe(user="User to show avatar for (defaults to you)")
     async def avatar(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
+        if not await self._check(interaction, "avatar"):
+            return
         target = user or interaction.user
         av = target.display_avatar
         is_animated = av.is_animated()
-        embed = discord.Embed(
-            title=f"{target.display_name}'s avatar",
-            color=0x5865F2,
-        )
+        embed = discord.Embed(title=f"{target.display_name}'s avatar", color=0x5865F2)
         embed.set_image(url=av.with_size(1024).url)
         formats = [f"[PNG]({av.with_format('png').url})", f"[WEBP]({av.with_format('webp').url})"]
         if is_animated:
@@ -112,9 +180,10 @@ class Fun(commands.Cog):
     @app_commands.describe(user1="First user", user2="Second user (defaults to you)")
     async def ship(self, interaction: discord.Interaction, user1: discord.Member,
                    user2: Optional[discord.Member] = None):
+        if not await self._check(interaction, "ship"):
+            return
         if user2 is None:
             user2 = interaction.user
-        # Deterministic score from the sorted pair of IDs
         combined = "".join(sorted([str(user1.id), str(user2.id)]))
         score = int(hashlib.md5(combined.encode()).hexdigest(), 16) % 101
         if score >= 80:
