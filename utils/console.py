@@ -110,6 +110,23 @@ class SparklyFormatter(logging.Formatter):
             f"{message}"
         )
 
+def print_shutdown():
+    _enable_ansi()
+    sp = _sparkle()
+    lines = [
+        f"",
+        f"  {sp}  {_gradient_line('Shutting down…', _BANNER_GRADIENT)}  {sp}",
+        f"  {BRIGHT_CYAN}{'─' * 34}{RESET}",
+        f"  {DIM}Disconnecting from Discord{RESET}",
+        f"  {DIM}Stopping dashboard{RESET}",
+        f"  {BRIGHT_CYAN}{'─' * 34}{RESET}",
+        f"  {BRIGHT_YELLOW}Goodbye! ✦{RESET}",
+        f"",
+    ]
+    for line in lines:
+        print(line)
+
+
 def setup_logging(level: int = logging.INFO):
     _enable_ansi()
     handler = logging.StreamHandler(sys.stdout)

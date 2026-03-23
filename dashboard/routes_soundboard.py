@@ -38,12 +38,21 @@ def _list_guild_sounds(guild_id: str) -> list[dict]:
     return sounds
 
 
+def _sound_count(guild_id: str) -> int:
+    guild_dir = SOUNDS_DIR / str(guild_id)
+    if not guild_dir.is_dir():
+        return 0
+    return sum(1 for p in guild_dir.iterdir()
+               if p.is_file() and p.suffix.lower() in ALLOWED_EXTENSIONS)
+
+
 @soundboard_bp.route("/")
 @login_required
 async def soundboard_list():
     bot = current_app.bot
     guilds = sorted(bot.guilds, key=lambda g: g.name.lower()) if bot else []
-    return await render_template("soundboard.html", guilds=guilds, guild=None, sounds=[], cfg=None)
+    sound_counts = {g.id: _sound_count(str(g.id)) for g in guilds}
+    return await render_template("soundboard.html", guilds=guilds, sound_counts=sound_counts)
 
 
 @soundboard_bp.route("/<int:guild_id>")
@@ -56,10 +65,7 @@ async def soundboard_guild(guild_id: int):
         return redirect(url_for("soundboard.soundboard_list"))
     sounds = _list_guild_sounds(str(guild_id))
     cfg = await db.get_soundboard_config(str(guild_id)) or {"volume_mode": "off", "fixed_volume": 0.8}
-    guilds = sorted(bot.guilds, key=lambda g: g.name.lower()) if bot else []
-    return await render_template(
-        "soundboard.html", guilds=guilds, guild=guild, sounds=sounds, cfg=cfg
-    )
+    return await render_template("soundboard_guild.html", guild=guild, sounds=sounds, cfg=cfg)
 
 
 @soundboard_bp.route("/<int:guild_id>/upload", methods=["POST"])

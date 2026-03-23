@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from utils.console import setup_logging, print_banner
+from utils.console import setup_logging, print_banner, print_shutdown
 
 setup_logging()
 log = logging.getLogger("bot")
@@ -131,4 +131,9 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        print_shutdown()

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Soundboard — {{ guild.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ guild.name }} — Soundboard</h1>
+    <p>Upload and manage sounds, configure playback volume.</p>
+</div>
+
+<!-- Upload -->
+<div class="card card-form mb-2">
+    <h3>Upload Sound</h3>
+    <form method="POST" enctype="multipart/form-data"
+          action="{{ url_for('soundboard.soundboard_upload', guild_id=guild.id) }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label for="sound_file">Sound File <span class="td-muted">(.mp3, .wav, .ogg)</span></label>
+            <input type="file" id="sound_file" name="sound_file" accept=".mp3,.wav,.ogg" required>
+        </div>
+        <div class="form-group">
+            <label for="sound_name">Name <span class="td-muted">(optional — defaults to filename)</span></label>
+            <input type="text" id="sound_name" name="sound_name"
+                   placeholder="e.g. airhorn" maxlength="50">
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+        <a href="{{ url_for('soundboard.soundboard_list') }}" class="btn btn-secondary">Back</a>
+    </form>
+</div>
+
+<!-- Sound list -->
+<div class="card mb-2">
+    <h3>Sounds ({{ sounds|length }})</h3>
+    {% if sounds %}
+    <div class="table-wrap mt-1">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Size</th>
+                    <th>Type</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in sounds %}
+                <tr>
+                    <td>{{ s.name }}</td>
+                    <td class="td-muted">{{ s.size_human }}</td>
+                    <td class="td-muted">{{ s.ext }}</td>
+                    <td>
+                        <form method="POST"
+                              action="{{ url_for('soundboard.soundboard_delete', guild_id=guild.id) }}"
+                              onsubmit="return confirm('Delete {{ s.filename }}?');">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="filename" value="{{ s.filename }}">
+                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="td-muted mt-1">No guild-specific sounds yet. Upload one above, or add files to
+        <code>sounds/</code> as global fallbacks.</p>
+    {% endif %}
+</div>
+
+<!-- Volume Settings -->
+<form method="POST" action="{{ url_for('soundboard.soundboard_settings', guild_id=guild.id) }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="card card-form mb-2">
+        <h3>Volume Settings</h3>
+
+        <div class="form-group">
+            <label>
+                <input type="radio" name="volume_mode" value="off"
+                       {% if cfg.volume_mode != 'fixed' %}checked{% endif %}>
+                Off <span class="td-muted">— play at default volume (1.0×)</span>
+            </label>
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="radio" name="volume_mode" value="fixed"
+                       {% if cfg.volume_mode == 'fixed' %}checked{% endif %}>
+                Fixed volume scalar
+            </label>
+        </div>
+
+        <div id="fixed-volume-wrap" class="form-group"
+             style="{% if cfg.volume_mode != 'fixed' %}display:none;{% endif %}padding-left:1.5rem;">
+            <label for="fixed_volume">
+                Scalar: <strong id="vol-display">{{ cfg.fixed_volume }}</strong>×
+                <span class="td-muted">(0.1 = quiet, 1.0 = normal, 2.0 = loud)</span>
+            </label>
+            <input type="range" id="fixed_volume" name="fixed_volume"
+                   min="0.1" max="2.0" step="0.1"
+                   value="{{ cfg.fixed_volume }}"
+                   style="width:100%;max-width:320px;display:block;margin-top:0.5rem;">
+        </div>
+
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+    </div>
+</form>
+
+<script>
+(function () {
+    var radios = document.querySelectorAll('input[name="volume_mode"]');
+    var wrap = document.getElementById('fixed-volume-wrap');
+    var slider = document.getElementById('fixed_volume');
+    var display = document.getElementById('vol-display');
+
+    function updateWrap() {
+        var fixed = document.querySelector('input[name="volume_mode"][value="fixed"]');
+        wrap.style.display = fixed && fixed.checked ? '' : 'none';
+    }
+
+    radios.forEach(function (r) { r.addEventListener('change', updateWrap); });
+    slider.addEventListener('input', function () { display.textContent = Number(slider.value).toFixed(1); });
+})();
+</script>
+{% endblock %}

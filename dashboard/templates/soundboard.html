@@ -1,136 +1,33 @@
 {% extends "base.html" %}
-{% block title %}Soundboard{% if guild %} — {{ guild.name }}{% endif %}{% endblock %}
+{% block title %}Soundboard{% endblock %}
 {% block content %}
 <div class="page-header">
-    <h1>{% if guild %}{{ guild.name }} — Soundboard{% else %}Soundboard{% endif %}</h1>
+    <h1>Soundboard</h1>
     <p>Manage per-server sound libraries and volume settings.</p>
 </div>
 
-{% if not guild %}
-<!-- Server picker -->
-<div class="card">
-    <h2>Select a Server</h2>
-    <ul class="server-list">
-        {% for g in guilds %}
-        <li>
-            <a href="{{ url_for('soundboard.soundboard_guild', guild_id=g.id) }}" class="btn btn-secondary">
-                {{ g.name }}
-            </a>
-        </li>
-        {% endfor %}
-    </ul>
+<div class="server-grid">
+    {% for guild in guilds %}
+    <a href="{{ url_for('soundboard.soundboard_guild', guild_id=guild.id) }}" class="grid-link">
+        <div class="card server-card">
+            {% if guild.icon %}
+            <img src="{{ guild.icon.url }}" alt="">
+            {% else %}
+            <div class="server-icon-fallback">{{ guild.name[0] }}</div>
+            {% endif %}
+            <div class="server-info">
+                <h3>{{ guild.name }}</h3>
+                <p>
+                    {% set count = sound_counts.get(guild.id, 0) %}
+                    {% if count > 0 %}
+                    <span class="badge badge-success">{{ count }} sound{{ 's' if count != 1 }}</span>
+                    {% else %}
+                    <span class="badge badge-muted">No sounds</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
 </div>
-{% else %}
-
-<a href="{{ url_for('soundboard.soundboard_list') }}" class="btn btn-secondary" style="margin-bottom:1rem;">&#8592; All Servers</a>
-
-<!-- Upload card -->
-<div class="card card-form">
-    <h2>Upload Sound</h2>
-    <form method="POST" enctype="multipart/form-data"
-          action="{{ url_for('soundboard.soundboard_upload', guild_id=guild.id) }}">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <div class="form-group">
-            <label for="sound_file">Sound File (.mp3, .wav, .ogg)</label>
-            <input type="file" id="sound_file" name="sound_file" accept=".mp3,.wav,.ogg" required>
-        </div>
-        <div class="form-group">
-            <label for="sound_name">Name (optional — defaults to filename)</label>
-            <input type="text" id="sound_name" name="sound_name"
-                   placeholder="e.g. airhorn" maxlength="50">
-        </div>
-        <button type="submit" class="btn btn-primary">Upload</button>
-    </form>
-</div>
-
-<!-- Sound list card -->
-<div class="card">
-    <h2>Sounds ({{ sounds|length }})</h2>
-    {% if sounds %}
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Size</th>
-                <th>Type</th>
-                <th>Delete</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for s in sounds %}
-            <tr>
-                <td>{{ s.name }}</td>
-                <td>{{ s.size_human }}</td>
-                <td>{{ s.ext }}</td>
-                <td>
-                    <form method="POST"
-                          action="{{ url_for('soundboard.soundboard_delete', guild_id=guild.id) }}"
-                          onsubmit="return confirm('Delete {{ s.filename }}?');">
-                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="filename" value="{{ s.filename }}">
-                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <p class="muted">No guild-specific sounds yet. Upload one above, or place files in
-        <code>sounds/</code> as global fallbacks.</p>
-    {% endif %}
-</div>
-
-<!-- Volume Settings card -->
-<div class="card card-form">
-    <h2>Volume Settings</h2>
-    <form method="POST"
-          action="{{ url_for('soundboard.soundboard_settings', guild_id=guild.id) }}">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <div class="form-group">
-            <label>
-                <input type="radio" name="volume_mode" value="off"
-                       {% if cfg.volume_mode != 'fixed' %}checked{% endif %}>
-                Off <span class="muted">(play at default volume)</span>
-            </label>
-        </div>
-        <div class="form-group">
-            <label>
-                <input type="radio" name="volume_mode" value="fixed"
-                       {% if cfg.volume_mode == 'fixed' %}checked{% endif %}>
-                Fixed volume
-            </label>
-        </div>
-        <div id="fixed-volume-wrap" class="form-group"
-             style="{% if cfg.volume_mode != 'fixed' %}display:none;{% endif %}padding-left:1.5rem;">
-            <label for="fixed_volume">
-                Volume scalar: <strong id="vol-display">{{ cfg.fixed_volume }}</strong>
-            </label>
-            <input type="range" id="fixed_volume" name="fixed_volume"
-                   min="0.1" max="2.0" step="0.1"
-                   value="{{ cfg.fixed_volume }}"
-                   style="width:100%;max-width:300px;">
-            <small class="muted">0.1 = very quiet &nbsp;·&nbsp; 1.0 = normal &nbsp;·&nbsp; 2.0 = loud</small>
-        </div>
-        <button type="submit" class="btn btn-primary">Save Settings</button>
-    </form>
-</div>
-
-<script>
-(function () {
-    var radios = document.querySelectorAll('input[name="volume_mode"]');
-    var wrap = document.getElementById('fixed-volume-wrap');
-    var slider = document.getElementById('fixed_volume');
-    var display = document.getElementById('vol-display');
-
-    function updateWrap() {
-        var fixed = document.querySelector('input[name="volume_mode"][value="fixed"]');
-        wrap.style.display = fixed && fixed.checked ? '' : 'none';
-    }
-
-    radios.forEach(function (r) { r.addEventListener('change', updateWrap); });
-    slider.addEventListener('input', function () { display.textContent = slider.value; });
-})();
-</script>
-{% endif %}
 {% endblock %}
