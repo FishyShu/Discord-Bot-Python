@@ -110,8 +110,9 @@ async def generate_image_fal(prompt: str) -> Optional[str]:
                     return _pollinations_url(prompt)
                 submit_data = await resp.json()
 
-            request_id = submit_data.get("request_id")
-            if not request_id:
+            status_url = submit_data.get("status_url")
+            response_url = submit_data.get("response_url")
+            if not status_url or not response_url:
                 return _pollinations_url(prompt)
 
             # Poll for result (up to 60s)
@@ -119,23 +120,21 @@ async def generate_image_fal(prompt: str) -> Optional[str]:
             for _ in range(20):
                 await asyncio.sleep(3)
                 async with session.get(
-                    f"https://queue.fal.run/fal-ai/flux/schnell/requests/{request_id}/status",
+                    status_url,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as poll:
                     result = await poll.json()
                     if result.get("status") == "COMPLETED":
-                        response_url = result.get("response_url")
-                        if response_url:
-                            async with session.get(
-                                response_url,
-                                headers=headers,
-                                timeout=aiohttp.ClientTimeout(total=10),
-                            ) as res:
-                                res_data = await res.json()
-                                images = res_data.get("images", [])
-                                if images:
-                                    return images[0].get("url")
+                        async with session.get(
+                            response_url,
+                            headers=headers,
+                            timeout=aiohttp.ClientTimeout(total=10),
+                        ) as res:
+                            res_data = await res.json()
+                            images = res_data.get("images", [])
+                            if images:
+                                return images[0].get("url")
                         break
                     elif result.get("status") in ("FAILED", "CANCELLED"):
                         break
