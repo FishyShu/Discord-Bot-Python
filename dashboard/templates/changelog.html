@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Changelog{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Changelog</h1>
+    <p>Version history for <strong>v{{ bot_version }}</strong>.</p>
+</div>
+<div class="card">
+    <div class="changelog-body">
+        {{ content_html | safe }}
+    </div>
+</div>
+<style>
+.changelog-body h2 { font-size: 1.2rem; color: var(--accent); margin: 1.5rem 0 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+.changelog-body h2:first-child { margin-top: 0; }
+.changelog-body h3 { font-size: 0.95rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 1rem 0 0.35rem; }
+.changelog-body ul { padding-left: 1.25rem; margin: 0 0 0.75rem; }
+.changelog-body li { margin-bottom: 0.25rem; line-height: 1.5; }
+.changelog-body hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+.changelog-body code { background: var(--bg-secondary); padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.875em; }
+</style>
+{% endblock %}

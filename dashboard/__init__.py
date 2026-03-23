@@ -154,6 +154,15 @@ def create_app(bot=None) -> Quart:
         await _flash("Bot is restarting...", "success")
         return redirect(url_for("dashboard.overview"))
 
+    @dashboard_bp.route("/changelog")
+    @login_required
+    async def changelog():
+        import markdown as _md
+        changelog_path = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+        raw = changelog_path.read_text(encoding="utf-8") if changelog_path.exists() else "_No changelog found._"
+        content_html = _md.markdown(raw, extensions=["fenced_code", "tables"])
+        return await render_template("changelog.html", content_html=content_html)
+
     @app.context_processor
     async def inject_bot_info():
         from bot import BOT_VERSION

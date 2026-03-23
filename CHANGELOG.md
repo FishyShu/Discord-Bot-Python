@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.0] - 2026-03-23
+
+### Added
+- **Soundboard dashboard** (`dashboard/routes_soundboard.py`) — per-guild sound libraries, upload/delete sounds, volume settings
+- **Fun Commands dashboard** (`dashboard/routes_fun.py`) — per-command enabled toggle, channel/role restrictions, cooldowns
+- **Shutdown animation** — colourful console animation on Ctrl+C
+
+---
+
+## [1.4.0] - 2026-03-22
+
+### Added
+- **Free Games** — content filters, embed customisation, per-category test notifications
+- **Twitch Drops** — embed customisation, game filter overhaul with active/inactive state
+
+### Fixed
+- `IndexError` on empty `link_flair_richtext` in Reddit fetch
+
+---
+
 ## [1.3.0] - 2026-03-22
 
 ### Added

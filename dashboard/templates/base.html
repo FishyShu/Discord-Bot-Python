@@ -54,6 +54,9 @@
                 <a href="{{ url_for('servers.server_list') }}" class="sidebar-link {% if '/servers' in request.path %}active{% endif %}">
                     <span class="icon">&#127760;</span> Servers
                 </a>
+                <a href="{{ url_for('dashboard.changelog') }}" class="sidebar-link {% if '/changelog' in request.path %}active{% endif %}">
+                    <span class="icon">&#128221;</span> Changelog
+                </a>
             </div>
 
             <!-- MODERATION -->
