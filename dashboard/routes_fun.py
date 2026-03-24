@@ -17,6 +17,7 @@ FUN_COMMANDS = [
     {"name": "mock",   "description": "Spongebob-mock someone's text"},
     {"name": "avatar", "description": "Show a user's avatar"},
     {"name": "ship",   "description": "Calculate love compatibility between two users"},
+    {"name": "echo",   "description": "Send a message as another user via webhook"},
 ]
 
 _DEFAULT_CFG = {"enabled": 1, "allowed_channels": "[]", "cooldown": 0, "allowed_roles": "[]"}

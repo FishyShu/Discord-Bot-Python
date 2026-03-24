@@ -203,6 +203,32 @@ class Fun(commands.Cog):
         embed.add_field(name="Verdict", value=verdict)
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="echo", description="Send a message as another user via webhook")
+    @app_commands.describe(user="User to impersonate", text="Message to send")
+    async def echo(self, interaction: discord.Interaction, user: discord.Member, text: str):
+        if not await self._check(interaction, "echo"):
+            return
+        await interaction.response.defer(ephemeral=True)
+        channel = interaction.channel
+        try:
+            webhooks = await channel.webhooks()
+            webhook = discord.utils.get(webhooks, name="EchoBot")
+            if webhook is None:
+                webhook = await channel.create_webhook(name="EchoBot")
+            await webhook.send(
+                content=text,
+                username=user.display_name,
+                avatar_url=user.display_avatar.url,
+            )
+            await interaction.followup.send("Done.", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "I need the **Manage Webhooks** permission to use this command.", ephemeral=True
+            )
+        except Exception as exc:
+            log.warning("Echo webhook failed: %s", exc)
+            await interaction.followup.send("Something went wrong.", ephemeral=True)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Fun(bot))
