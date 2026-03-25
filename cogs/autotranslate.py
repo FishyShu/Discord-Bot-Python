@@ -121,8 +121,8 @@ class AutoTranslate(commands.Cog):
         try:
             await message.add_reaction("🌐")
             await message.reply(f"🌐 **Translation ({target}):** {translated}", mention_author=False)
-        except discord.HTTPException:
-            pass
+        except discord.HTTPException as e:
+            log.debug("Failed to send translation reply in channel %s: %s", message.channel.id, e)
 
 
 async def setup(bot: commands.Bot):

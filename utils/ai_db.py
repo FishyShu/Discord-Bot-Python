@@ -76,7 +76,7 @@ async def init_ai_db() -> None:
                 await db.execute(
                     f"ALTER TABLE ai_server_config ADD COLUMN {col} {col_type} DEFAULT {default}"
                 )
-            except Exception:
+            except aiosqlite.OperationalError:
                 pass  # column already exists
         await db.commit()
 

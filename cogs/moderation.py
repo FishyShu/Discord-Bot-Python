@@ -28,8 +28,8 @@ class Moderation(commands.Cog):
         if channel:
             try:
                 await channel.send(embed=embed)
-            except discord.HTTPException:
-                pass
+            except discord.HTTPException as e:
+                log.warning("Failed to send to log channel: %s", e)
 
     async def _dm(self, user: discord.User | discord.Member, embed: discord.Embed) -> None:
         try:

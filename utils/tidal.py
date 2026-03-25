@@ -44,7 +44,8 @@ def _ydlp_extract_tidal(url: str) -> list[dict]:
                     "duration": e.get("duration"),
                 })
             return results
-    except Exception:
+    except Exception as e:
+        log.debug("Tidal parse failed for %s: %s", url, e)
         return []
 
 

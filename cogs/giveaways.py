@@ -60,8 +60,8 @@ class Giveaways(commands.Cog):
                     users = [u async for u in reaction.users() if not u.bot]
                     k = min(gw["winner_count"], len(users))
                     winners = random.sample(users, k) if users else []
-            except (discord.NotFound, discord.HTTPException):
-                pass
+            except (discord.NotFound, discord.HTTPException) as e:
+                log.debug("Failed to fetch giveaway message for giveaway %s: %s", gw.get("id"), e)
 
         winner_ids = [str(w.id) for w in winners]
         await db.end_giveaway(gw["id"], winner_ids)
@@ -79,8 +79,8 @@ class Giveaways(commands.Cog):
 
         try:
             await channel.send(content=content, embed=embed)
-        except discord.HTTPException:
-            pass
+        except discord.HTTPException as e:
+            log.debug("Failed to send giveaway end message to channel %s: %s", channel.id, e)
         return winners
 
     gw_group = app_commands.Group(
@@ -166,8 +166,8 @@ class Giveaways(commands.Cog):
                     users = [u async for u in reaction.users() if not u.bot]
                     k = min(gw["winner_count"], len(users))
                     new_winners = random.sample(users, k) if users else []
-            except (discord.NotFound, discord.HTTPException):
-                pass
+            except (discord.NotFound, discord.HTTPException) as e:
+                log.debug("Failed to fetch giveaway message for reroll %s: %s", giveaway_id, e)
 
         if new_winners:
             winner_mentions = " ".join(w.mention for w in new_winners)

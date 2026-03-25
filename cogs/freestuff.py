@@ -331,8 +331,8 @@ class FreeStuff(commands.Cog):
                                 end_dt = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
                                 delta = end_dt - datetime.now(timezone.utc)
                                 is_free_weekend = 0 < delta.days <= 4
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                log.debug("Skipping malformed Epic item: %s", e)
 
                         category = classify_item(title, None, "epic", is_free_weekend)
                         end_date_display = end_date_str[:10] if end_date_str else ""

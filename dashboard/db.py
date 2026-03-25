@@ -318,12 +318,12 @@ async def init_db():
         ]:
             try:
                 await db.execute(f"ALTER TABLE custom_commands ADD COLUMN {col} {definition}")
-            except Exception:
+            except aiosqlite.OperationalError:
                 pass
         # Add fail_count to reminders for retry tracking
         try:
             await db.execute("ALTER TABLE reminders ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0")
-        except Exception:
+        except aiosqlite.OperationalError:
             pass  # column already exists
         # Add level-up image columns to xp_config
         for col, definition in [
@@ -332,18 +332,18 @@ async def init_db():
         ]:
             try:
                 await db.execute(f"ALTER TABLE xp_config ADD COLUMN {col} {definition}")
-            except Exception:
+            except aiosqlite.OperationalError:
                 pass
         # Add mention_role_id to announcement configs
         for table in ["freestuff_config", "twitch_drops_config", "streaming_config"]:
             try:
                 await db.execute(f"ALTER TABLE {table} ADD COLUMN mention_role_id TEXT")
-            except Exception:
+            except aiosqlite.OperationalError:
                 pass
         # Add log_ghost_pings to audit_config
         try:
             await db.execute("ALTER TABLE audit_config ADD COLUMN log_ghost_pings INTEGER NOT NULL DEFAULT 0")
-        except Exception:
+        except aiosqlite.OperationalError:
             pass
         # Add content_filters to freestuff_config
         try:
@@ -351,7 +351,7 @@ async def init_db():
                 "ALTER TABLE freestuff_config ADD COLUMN content_filters TEXT NOT NULL DEFAULT "
                 "'[\"free_to_keep\",\"free_weekend\",\"other_freebies\",\"gamedev_assets\",\"giveaways_rewards\"]'"
             )
-        except Exception:
+        except aiosqlite.OperationalError:
             pass
         # Add embed customization columns to freestuff_config
         for col, definition in [
@@ -364,12 +364,12 @@ async def init_db():
         ]:
             try:
                 await db.execute(f"ALTER TABLE freestuff_config ADD COLUMN {col} {definition}")
-            except Exception:
+            except aiosqlite.OperationalError:
                 pass
         # Add category to free_games
         try:
             await db.execute("ALTER TABLE free_games ADD COLUMN category TEXT NOT NULL DEFAULT 'free_to_keep'")
-        except Exception:
+        except aiosqlite.OperationalError:
             pass
         # Add embed customization columns to twitch_drops_config
         for col, definition in [
@@ -382,12 +382,12 @@ async def init_db():
         ]:
             try:
                 await db.execute(f"ALTER TABLE twitch_drops_config ADD COLUMN {col} {definition}")
-            except Exception:
+            except aiosqlite.OperationalError:
                 pass
         # soundboard_config columns (table created by SCHEMA; add column if older DBs lack it)
         try:
             await db.execute("ALTER TABLE soundboard_config ADD COLUMN fixed_volume REAL NOT NULL DEFAULT 0.8")
-        except Exception:
+        except aiosqlite.OperationalError:
             pass
         await db.commit()
 
@@ -1157,7 +1157,7 @@ async def add_free_game(*, title: str, url: str, platform: str,
             )
             await db.commit()
             return cursor.lastrowid
-        except Exception:
+        except aiosqlite.IntegrityError:
             return None
 
 
@@ -1222,7 +1222,7 @@ async def add_twitch_drop(*, drop_id: str, game_name: str, game_id: Optional[str
             )
             await db.commit()
             return cursor.lastrowid
-        except Exception:
+        except aiosqlite.IntegrityError:
             return None
 
 
@@ -1297,7 +1297,7 @@ async def add_streaming_config(*, guild_id: str, channel_id: str, streamer_url: 
             )
             await db.commit()
             return cursor.lastrowid
-        except Exception:
+        except aiosqlite.IntegrityError:
             return None
 
 

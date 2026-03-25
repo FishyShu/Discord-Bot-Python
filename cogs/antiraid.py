@@ -42,8 +42,8 @@ class AntiRaid(commands.Cog):
             if ch:
                 try:
                     await ch.send(embed=embed)
-                except discord.HTTPException:
-                    pass
+                except discord.HTTPException as e:
+                    log.debug("Failed to send antiraid alert to audit log channel: %s", e)
 
     async def _take_action(self, guild: discord.Guild, member: discord.Member,
                             action: str, reason: str) -> None:
@@ -130,8 +130,8 @@ class AntiRaid(commands.Cog):
                 await self._take_action(message.guild, member, action, "AntiRaid: mention spam")
                 try:
                     await message.delete()
-                except discord.HTTPException:
-                    pass
+                except discord.HTTPException as e:
+                    log.debug("Failed to delete mention-spam message in guild %s: %s", message.guild.id, e)
                 return
 
         # Message spam check

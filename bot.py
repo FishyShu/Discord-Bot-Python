@@ -4,6 +4,7 @@ import logging
 import os
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -79,6 +80,32 @@ class MusicBot(commands.Bot):
             log.info("Global sync: %d slash commands", len(synced))
         else:
             log.info("Skipping command sync (set SYNC_COMMANDS=1 to sync)")
+
+    async def on_app_command_error(self, interaction, error):
+        original = getattr(error, "original", error)
+        if isinstance(original, app_commands.MissingPermissions):
+            msg = "You don't have permission to use this command."
+        elif isinstance(original, app_commands.BotMissingPermissions):
+            msg = f"I'm missing permissions: {', '.join(original.missing_permissions)}"
+        elif isinstance(original, app_commands.CommandOnCooldown):
+            msg = f"This command is on cooldown. Try again in {original.retry_after:.1f}s."
+        elif isinstance(original, discord.Forbidden):
+            msg = "I don't have permission to do that."
+        elif isinstance(original, discord.HTTPException):
+            log.warning("HTTP error in command %s: %s", interaction.command, original)
+            msg = "A Discord API error occurred. Please try again."
+        else:
+            log.error("Unhandled error in command %s (guild %s, user %s)",
+                interaction.command, getattr(interaction.guild, "id", "DM"),
+                interaction.user.id, exc_info=original)
+            msg = "An unexpected error occurred."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+        except discord.HTTPException:
+            pass
 
     async def on_ready(self):
         from utils.console import BRIGHT_GREEN, BRIGHT_MAGENTA, BRIGHT_YELLOW, BRIGHT_CYAN, DIM, RESET, _sparkle

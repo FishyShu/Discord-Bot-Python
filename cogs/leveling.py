@@ -183,8 +183,8 @@ class Leveling(commands.Cog):
                     await channel.send(embed=embed)
                 else:
                     await channel.send(text)
-            except discord.HTTPException:
-                pass
+            except discord.HTTPException as e:
+                log.debug("Failed to send level-up message in channel %s: %s", channel.id, e)
 
         # Check role rewards — use range to catch intermediate level jumps
         rewards = self._reward_cache.get(gid, [])

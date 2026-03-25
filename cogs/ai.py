@@ -1043,8 +1043,8 @@ class AI(commands.Cog):
                         summary = await summarize_url(att.url)
                         if summary:
                             attachment_lines.append(f"[File content preview]:\n{summary[:600]}")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log.debug("Failed to process attachment: %s", e)
             content = (content + "\n" + "\n".join(attachment_lines)).strip()
 
         show_typing = bool(config.get("show_typing", 1))

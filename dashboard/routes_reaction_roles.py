@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 from quart import Blueprint, current_app, flash, redirect, render_template, request, url_for
+
+log = logging.getLogger(__name__)
 
 from .auth import login_required
 from . import db
@@ -65,6 +69,7 @@ async def rr_add(guild_id: int):
             role_id=role_id,
         )
     except Exception as e:
+        log.error("Failed to create reaction role for guild %s: %s", guild_id, e, exc_info=True)
         await flash(f"Error: {e}", "danger")
         return redirect(url_for("reaction_roles.rr_guild", guild_id=guild_id))
 

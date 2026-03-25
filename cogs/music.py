@@ -417,8 +417,8 @@ class Music(commands.Cog):
             if player.now_playing_message is not None:
                 try:
                     await player.now_playing_message.edit(view=None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug("Failed to resolve thumbnail for '%s': %s", track.title, e)
             embed = discord.Embed(
                 title="Now Playing",
                 description=f"**{track.title}** [{track.duration_str}]",

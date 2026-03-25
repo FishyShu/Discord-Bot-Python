@@ -240,8 +240,8 @@ class CustomCommands(commands.Cog):
             await asyncio.sleep(seconds)
             try:
                 await bot_message.delete()
-            except discord.HTTPException:
-                pass
+            except discord.HTTPException as e:
+                log.debug("Failed to auto-delete bot response message: %s", e)
         asyncio.create_task(_delete())
 
     async def _apply_mod_action(self, message: discord.Message, cmd: dict):
@@ -350,8 +350,8 @@ class CustomCommands(commands.Cog):
                         if cmd.get("delete_trigger"):
                             try:
                                 await message.delete()
-                            except discord.HTTPException:
-                                pass
+                            except discord.HTTPException as e:
+                                log.debug("Failed to delete trigger message for cmd '%s': %s", cmd.get("name"), e)
                         await self._send_response(message, cmd, args)
                         await self._apply_reactions(message, cmd)
                         await self._apply_mod_action(message, cmd)
@@ -370,8 +370,8 @@ class CustomCommands(commands.Cog):
                     if cmd.get("delete_trigger"):
                         try:
                             await message.delete()
-                        except discord.HTTPException:
-                            pass
+                        except discord.HTTPException as e:
+                            log.debug("Failed to delete trigger message for cmd '%s': %s", cmd.get("name"), e)
                     await self._send_response(message, cmd, args)
                     await self._apply_reactions(message, cmd)
                     await self._apply_mod_action(message, cmd)

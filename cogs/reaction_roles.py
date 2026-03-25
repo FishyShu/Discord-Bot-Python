@@ -72,8 +72,8 @@ class ReactionRoles(commands.Cog):
 
         try:
             await message.add_reaction(emoji)
-        except discord.HTTPException:
-            pass
+        except discord.HTTPException as e:
+            log.debug("Failed to add reaction %s to message %s: %s", emoji, message.id, e)
 
         await interaction.response.send_message(
             f"Reaction role set: {emoji} → {role.mention} on [message]({message.jump_url})",

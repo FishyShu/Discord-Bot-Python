@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
 import os
 import re
 import tempfile
 from typing import Optional
 
 import yt_dlp
+
+log = logging.getLogger(__name__)
 
 YDL_OPTIONS = {
     "format": "bestaudio/best",
@@ -49,7 +52,8 @@ def _extract(query: str, *, search: bool = False) -> dict | list[dict] | None:
                     return entries
                 return entries[0] if entries else None
             return info
-    except Exception:
+    except Exception as e:
+        log.debug("yt-dlp failed for %s: %s", query, e)
         return None
 
 
@@ -113,7 +117,8 @@ async def get_stream_url(url: str) -> Optional[str]:
                         if entry is not None and entry.get("url"):
                             return entry["url"]
                 return None
-        except Exception:
+        except Exception as e:
+            log.debug("yt-dlp failed for %s: %s", search_query, e)
             return None
 
     try:
@@ -167,7 +172,8 @@ def _download(url: str, *, audio_only: bool = True) -> tuple[str, str] | None:
                 if f.endswith(target_ext):
                     return os.path.join(tmpdir, f), f"{safe_title}{target_ext}"
             return None
-    except Exception:
+    except Exception as e:
+        log.debug("yt-dlp failed for %s: %s", url, e)
         return None
 
 
@@ -202,7 +208,8 @@ async def extract_playlist(url: str) -> list[dict]:
                 if info is None:
                     return []
                 return [e for e in info.get("entries", []) if e is not None]
-        except Exception:
+        except Exception as e:
+            log.debug("yt-dlp failed for %s: %s", url, e)
             return []
 
     loop = asyncio.get_running_loop()

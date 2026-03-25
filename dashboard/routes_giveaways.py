@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import random
 
 from quart import Blueprint, current_app, flash, redirect, render_template, request, url_for
@@ -47,10 +48,9 @@ async def end_giveaway(guild_id: int, giveaway_id: int):
     # Pick random winners from entrants
     entrants = giveaway.get("entrants") or []
     if isinstance(entrants, str):
-        import json
         try:
             entrants = json.loads(entrants)
-        except Exception:
+        except (json.JSONDecodeError, ValueError):
             entrants = []
 
     winner_count = int(giveaway.get("winner_count", 1))

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 import math
 
 from quart import Blueprint, current_app, flash, redirect, render_template, request, url_for
+
+log = logging.getLogger(__name__)
 
 from .auth import login_required
 from .utils import _safe_int, _save_upload
@@ -107,6 +110,7 @@ async def leveling_reward_add(guild_id: int):
     try:
         await db.create_xp_role_reward(str(guild_id), level, role_id)
     except Exception as e:
+        log.error("Failed to create XP role reward for guild %s: %s", guild_id, e, exc_info=True)
         await flash(f"Error: {e}", "danger")
         return redirect(url_for("leveling.leveling_edit", guild_id=guild_id))
 
