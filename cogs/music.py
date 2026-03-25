@@ -342,6 +342,16 @@ class Music(commands.Cog):
 
         return vc
 
+    async def _retry_track(self, guild: discord.Guild, track: TrackInfo, _attempt: int = 1):
+        """Re-insert a failed track at the front of the queue and retry (max 2 attempts)."""
+        if _attempt > 2:
+            log.error("Giving up on '%s' after %d attempts, skipping.", track.title, _attempt - 1)
+            await self._play_next(guild)
+            return
+        player = await self.get_player(guild.id)
+        player.queue.insert(0, track)
+        await self._play_next(guild)
+
     async def _play_next(self, guild: discord.Guild):
         """Play the next track in the guild's queue."""
         player = await self.get_player(guild.id)
@@ -401,8 +411,11 @@ class Music(commands.Cog):
 
         def after_play(error):
             if error:
-                log.error("Playback error: %s", error)
-            asyncio.run_coroutine_threadsafe(self._play_next(guild), self.bot.loop)
+                log.warning("Playback error for '%s': %s — retrying with fresh stream URL", track.title, error)
+                track.stream_url = None  # force re-fetch on retry
+                asyncio.run_coroutine_threadsafe(self._retry_track(guild, track), self.bot.loop)
+            else:
+                asyncio.run_coroutine_threadsafe(self._play_next(guild), self.bot.loop)
 
         vc.play(audio_source, after=after_play)
 
