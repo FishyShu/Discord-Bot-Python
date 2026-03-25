@@ -587,6 +587,102 @@ class Music(commands.Cog):
         if not vc.is_playing() and not vc.is_paused():
             await self._play_next(interaction.guild)
 
+    @app_commands.command(name="playnext", description="Insert a song to play immediately after the current track")
+    @app_commands.describe(query="YouTube/Spotify/Tidal URL or search text")
+    async def playnext(self, interaction: discord.Interaction, query: str):
+        vc = await self._ensure_voice(interaction)
+        if vc is None:
+            return
+
+        await interaction.response.defer()
+        player = await self.get_player(interaction.guild.id)
+        player.text_channel = interaction.channel
+
+        track: TrackInfo | None = None
+
+        is_url = query.startswith("http://") or query.startswith("https://")
+
+        if is_spotify_url(query):
+            loop = asyncio.get_running_loop()
+            spotify_tracks = await loop.run_in_executor(None, functools.partial(get_tracks_from_url, query))
+            if not spotify_tracks:
+                await interaction.followup.send("Could not get tracks from Spotify URL.", ephemeral=True)
+                return
+            st = spotify_tracks[0]
+            track = TrackInfo(
+                title=st["title"],
+                url=f"ytsearch:{st['query']}",
+                duration=st.get("duration"),
+                requester=interaction.user.display_name,
+                source="spotify",
+            )
+        elif is_tidal_url(query):
+            loop = asyncio.get_running_loop()
+            tidal_tracks = await loop.run_in_executor(None, functools.partial(get_tracks_from_tidal_url, query))
+            if not tidal_tracks:
+                await interaction.followup.send("Could not get tracks from Tidal URL.", ephemeral=True)
+                return
+            tt = tidal_tracks[0]
+            track = TrackInfo(
+                title=tt["title"],
+                url=f"ytsearch:{tt['query']}",
+                duration=tt.get("duration"),
+                requester=interaction.user.display_name,
+                source="tidal",
+            )
+        elif not is_url:
+            results = await search_youtube(query)
+            if not results:
+                await interaction.followup.send("No results found.", ephemeral=True)
+                return
+            r = results[0]
+            vid_url = r.get("webpage_url") or r.get("url") or ""
+            if not vid_url.startswith("http") and r.get("id"):
+                vid_url = f"https://www.youtube.com/watch?v={r['id']}"
+            track = TrackInfo(
+                title=r.get("title", "Unknown"),
+                url=vid_url,
+                duration=r.get("duration"),
+                thumbnail=r.get("thumbnail"),
+                requester=interaction.user.display_name,
+                source="youtube",
+            )
+        else:
+            if is_youtube_playlist(query):
+                await interaction.followup.send("Playlists are not supported with `/playnext`. Use a single track URL.", ephemeral=True)
+                return
+            info = await extract_info(query)
+            if info is None:
+                await interaction.followup.send("No results found.", ephemeral=True)
+                return
+            _track_url = info.get("webpage_url") or info.get("original_url") or query
+            _src = "soundcloud" if "soundcloud.com" in query else "youtube"
+            track = TrackInfo(
+                title=info.get("title", "Unknown"),
+                url=_track_url,
+                duration=info.get("duration"),
+                thumbnail=info.get("thumbnail"),
+                requester=interaction.user.display_name,
+                stream_url=info.get("url"),
+                source=_src,
+            )
+
+        if len(player.queue) >= MAX_QUEUE_SIZE:
+            await interaction.followup.send("Queue is full (max 500 tracks).", ephemeral=True)
+            return
+
+        player.queue.insert(0, track)
+
+        embed = discord.Embed(
+            title="Playing next",
+            description=f"**{track.title}** [{track.duration_str}]",
+            color=discord.Color.blurple(),
+        )
+        await interaction.followup.send(embed=embed)
+
+        if not vc.is_playing() and not vc.is_paused():
+            await self._play_next(interaction.guild)
+
     @app_commands.command(name="search", description="Search YouTube and pick a result")
     @app_commands.describe(query="Search query")
     async def search(self, interaction: discord.Interaction, query: str):
