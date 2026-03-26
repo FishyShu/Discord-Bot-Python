@@ -47,6 +47,16 @@ ALL_CATEGORIES = ["free_to_keep", "free_weekend", "other_freebies", "gamedev_ass
 
 REDDIT_PLATFORM_RE = re.compile(r"\[(Steam|Epic|GOG|Ubisoft|Origin|Humble|Epic Games)\]", re.IGNORECASE)
 
+_REDDIT_NOISE_LEADING = re.compile(r"^(\[[^\]]{1,30}\]\s*)+", re.IGNORECASE)
+_REDDIT_NOISE_TRAILING = re.compile(r"[\(\[][^\)\]]{1,50}[\)\]]\s*$", re.IGNORECASE)
+
+
+def _clean_reddit_title(raw: str) -> str:
+    title = raw.strip()
+    title = _REDDIT_NOISE_LEADING.sub("", title).strip()
+    title = _REDDIT_NOISE_TRAILING.sub("", title).strip()
+    return title or raw.strip()
+
 ALL_PLATFORMS = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "other"]
 
 PLATFORM_LABELS = {
@@ -308,6 +318,15 @@ class FreeStuff(commands.Cog):
                         if discount_pct != 0:
                             continue
 
+                        start_date_str = offer.get("startDate", "")
+                        if start_date_str:
+                            try:
+                                start_dt = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
+                                if start_dt > datetime.now(timezone.utc):
+                                    continue  # offer not live yet — skip to avoid blocking future send
+                            except ValueError:
+                                pass
+
                         slug = elem.get("catalogNs", {}).get("mappings", [{}])
                         page_slug = slug[0].get("pageSlug", "") if slug else ""
                         url = f"https://store.epicgames.com/p/{page_slug}" if page_slug else ""
@@ -364,7 +383,7 @@ class FreeStuff(commands.Cog):
             posts = data.get("data", {}).get("children", [])
             for post in posts:
                 pdata = post.get("data", {})
-                title = pdata.get("title", "")
+                title = _clean_reddit_title(pdata.get("title", ""))
                 url = pdata.get("url", "")
                 if not url or pdata.get("is_self"):
                     continue
