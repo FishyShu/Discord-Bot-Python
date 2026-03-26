@@ -366,6 +366,13 @@ async def init_db():
                 await db.execute(f"ALTER TABLE freestuff_config ADD COLUMN {col} {definition}")
             except aiosqlite.OperationalError:
                 pass
+        # Add platform_mention_roles to freestuff_config
+        try:
+            await db.execute(
+                "ALTER TABLE freestuff_config ADD COLUMN platform_mention_roles TEXT NOT NULL DEFAULT '{}'"
+            )
+        except aiosqlite.OperationalError:
+            pass
         # Add category to free_games
         try:
             await db.execute("ALTER TABLE free_games ADD COLUMN category TEXT NOT NULL DEFAULT 'free_to_keep'")

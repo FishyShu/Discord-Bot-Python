@@ -91,20 +91,30 @@ def build_game_embed(
     show_expiry: bool = True,
     show_image: bool = True,
 ) -> discord.Embed:
-    if embed_color:
-        color = int(embed_color.lstrip("#"), 16)
-    else:
-        color = PLATFORM_COLORS.get(platform, 0x5865F2)
+    color = int(embed_color.lstrip("#"), 16) if embed_color else PLATFORM_COLORS.get(platform, 0x5865F2)
     embed = discord.Embed(title=title, url=url, color=color)
+
+    # Description: price + expiry (prominent, top of embed)
+    desc_lines = []
     if show_price:
         price_str = f"~~{original_price}~~ → **FREE**" if original_price else "**FREE**"
-        embed.add_field(name="Price", value=price_str, inline=True)
+        desc_lines.append(price_str)
+    if show_expiry and end_date:
+        try:
+            dt = datetime.fromisoformat(end_date)
+            unix = int(dt.replace(tzinfo=timezone.utc).timestamp())
+            desc_lines.append(f"🕐 Free until: <t:{unix}:D>")
+        except ValueError:
+            desc_lines.append(f"🕐 Free until: {end_date}")
+    if desc_lines:
+        embed.description = "\n".join(desc_lines)
+
+    # Secondary inline fields
     if show_category:
         embed.add_field(name="Category", value=CATEGORY_LABELS.get(category, category), inline=True)
     if show_platform:
         embed.add_field(name="Platform", value=PLATFORM_LABELS.get(platform, platform.title()), inline=True)
-    if show_expiry and end_date:
-        embed.add_field(name="Free until", value=end_date, inline=False)
+
     if show_image and image_url:
         embed.set_image(url=image_url)
     embed.set_footer(text=f"{PLATFORM_LABELS.get(platform, platform.title())} • Free Games Bot")
@@ -236,10 +246,54 @@ class FreeStuff(commands.Cog):
             indicator = "\u2705" if p in platforms else "\u274c"
             platform_lines.append(f"{emoji} {label}: {indicator}")
         embed.add_field(name="Platforms", value="\n".join(platform_lines), inline=False)
+
+        platform_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
+        if platform_roles:
+            role_lines = []
+            for p, rid in platform_roles.items():
+                role_lines.append(f"{PLATFORM_EMOJIS.get(p, '')} {PLATFORM_LABELS.get(p, p)}: <@&{rid}>")
+            embed.add_field(name="Platform Mention Roles", value="\n".join(role_lines), inline=False)
+
         embed.set_footer(text="Use the dropdown below to change tracked platforms")
 
         view = PlatformConfigView(platforms, guild_id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @freestuff_group.command(name="setrole", description="Set a role to mention for a specific platform")
+    @app_commands.describe(platform="Game platform", role="Role to mention")
+    @app_commands.choices(platform=[app_commands.Choice(name=PLATFORM_LABELS[p], value=p) for p in ALL_PLATFORMS])
+    async def freestuff_setrole(self, interaction: discord.Interaction, platform: str, role: discord.Role):
+        guild_id = str(interaction.guild_id)
+        cfg = await db.get_freestuff_config(guild_id)
+        if not cfg:
+            await interaction.response.send_message(
+                "Free game notifications are not set up. Use `/freestuff setup <channel>` first.",
+                ephemeral=True,
+            )
+            return
+        roles = json.loads(cfg.get("platform_mention_roles") or "{}")
+        roles[platform] = str(role.id)
+        await db.upsert_freestuff_config(guild_id, platform_mention_roles=json.dumps(roles))
+        await self.refresh_cache()
+        await interaction.response.send_message(
+            f"{role.mention} will now be mentioned for **{PLATFORM_LABELS[platform]}** games.",
+            ephemeral=True,
+        )
+
+    @freestuff_group.command(name="clearrole", description="Remove a per-platform mention role")
+    @app_commands.describe(platform="Game platform")
+    @app_commands.choices(platform=[app_commands.Choice(name=PLATFORM_LABELS[p], value=p) for p in ALL_PLATFORMS])
+    async def freestuff_clearrole(self, interaction: discord.Interaction, platform: str):
+        guild_id = str(interaction.guild_id)
+        cfg = await db.get_freestuff_config(guild_id)
+        roles = json.loads((cfg or {}).get("platform_mention_roles") or "{}")
+        roles.pop(platform, None)
+        await db.upsert_freestuff_config(guild_id, platform_mention_roles=json.dumps(roles))
+        await self.refresh_cache()
+        await interaction.response.send_message(
+            f"Removed mention role for **{PLATFORM_LABELS[platform]}**.",
+            ephemeral=True,
+        )
 
     @freestuff_group.command(name="check", description="Manually check for free games now")
     async def freestuff_check(self, interaction: discord.Interaction):
@@ -445,14 +499,20 @@ class FreeStuff(commands.Cog):
             allowed_platforms = json.loads(cfg.get("platforms", "[]"))
             guild_filters = json.loads(cfg.get("content_filters") or
                 '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
-            mention_role_id = cfg.get("mention_role_id")
-            content = f"<@&{mention_role_id}>" if mention_role_id else None
 
             for game in games:
                 if allowed_platforms and game["platform"] not in allowed_platforms:
                     continue
                 if game.get("category", "free_to_keep") not in guild_filters:
                     continue
+
+                mention_parts = []
+                if cfg.get("mention_role_id"):
+                    mention_parts.append(f"<@&{cfg['mention_role_id']}>")
+                platform_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
+                if game["platform"] in platform_roles:
+                    mention_parts.append(f"<@&{platform_roles[game['platform']]}>")
+                content = " ".join(mention_parts) or None
 
                 embed = build_game_embed(
                     title=game["title"],
