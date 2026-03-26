@@ -5,12 +5,10 @@ import json
 import logging
 import os
 import re
-import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 import aiohttp
 import discord
-from email.utils import parsedate_to_datetime
 from discord import app_commands
 from discord.ext import commands, tasks
 
@@ -18,25 +16,21 @@ from dashboard import db
 
 log = logging.getLogger(__name__)
 
-EPIC_API           = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
-GG_DEALS_RSS_URL    = "https://gg.deals/us/news/freebies/feed/"
+EPIC_API            = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
+GAMERPOWER_API_URL  = "https://www.gamerpower.com/api/giveaways"
 GG_DEALS_PRICES_URL = "https://api.gg.deals/v1/prices/by-steam-app-id/"
 GG_DEALS_API_KEY    = os.getenv("GG_DEALS_API_KEY", "")
 
-_GG_IMG_RE    = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
 _STEAM_APP_RE = re.compile(r'store\.steampowered\.com/app/(\d+)', re.IGNORECASE)
 
-GG_DEALS_CATEGORY_TO_PLATFORM: dict[str, str] = {
-    "free steam keys":              "steam",
-    "free steam points shop items": "steam",
-    "epic store free games":        "epic",
-    "free gog games":               "gog",
-    "origin free games":            "origin",
-    "humble bundle free games":     "humble",
-    "itch.io free games":           "other",
-    "free twitch drops":            "other",
-    "free beta keys":               "other",
-    "free game trials":             "other",
+_GAMERPOWER_PLATFORM_MAP: dict[str, str] = {
+    "epic games store": "epic",
+    "steam":            "steam",
+    "gog":              "gog",
+    "humble bundle":    "humble",
+    "ubisoft":          "ubisoft",
+    "origin":           "origin",
+    "ea app":           "origin",
 }
 
 PLATFORM_COLORS = {
@@ -399,7 +393,7 @@ class FreeStuff(commands.Cog):
         """Fetch from all sources, dedup, notify guilds. Returns list of new games."""
         new_games = []
         new_games.extend(await self._fetch_epic())
-        new_games.extend(await self._fetch_gg_deals_rss())
+        new_games.extend(await self._fetch_gamerpower())
         await self._enrich_steam_prices(new_games)
 
         if not self._seeded:
@@ -491,79 +485,75 @@ class FreeStuff(commands.Cog):
             log.exception("Error fetching Epic free games")
         return new_games
 
-    async def _fetch_gg_deals_rss(self) -> list[dict]:
+    async def _fetch_gamerpower(self) -> list[dict]:
         new_games = []
         try:
             headers = {"User-Agent": "DiscordBot/1.0"}
-            async with self._session.get(GG_DEALS_RSS_URL, headers=headers,
+            async with self._session.get(GAMERPOWER_API_URL, headers=headers,
                                          timeout=aiohttp.ClientTimeout(total=15)) as resp:
                 if resp.status != 200:
                     return []
-                text = await resp.text()
+                items = await resp.json()
 
-            root = ET.fromstring(text)
-            ns = {"media": "http://search.yahoo.com/mrss/"}
-            for item in root.findall(".//item"):
-                title = (item.findtext("title") or "").strip()
-                url   = (item.findtext("link") or "").strip()
-                desc  = (item.findtext("description") or "")
-                if not title or not url:
+            for item in items:
+                title = (item.get("title") or "").strip()
+                gp_url = item.get("open_giveaway_url") or ""
+                if not title or not gp_url:
                     continue
 
-                # Skip stale items (pubDate > 30 days ago)
-                pub_date_str = item.findtext("pubDate") or ""
-                if pub_date_str:
+                # Skip mobile-only (no PC/store platform)
+                platforms_str = (item.get("platforms") or "").lower()
+                pc_stores = ("pc", "steam", "epic", "gog", "humble", "ubisoft", "origin", "drm-free", "itch")
+                if not any(p in platforms_str for p in pc_stores):
+                    continue
+
+                # Skip items with a past end_date
+                end_date_str = item.get("end_date") or ""
+                end_date_display = ""
+                if end_date_str and end_date_str != "N/A":
                     try:
-                        pub_dt = parsedate_to_datetime(pub_date_str)
-                        if (datetime.now(timezone.utc) - pub_dt).days > 30:
+                        end_dt = datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                        if end_dt < datetime.now(timezone.utc):
                             continue
+                        end_date_display = end_date_str[:10]
                     except Exception:
                         pass
 
-                # GG.deals RSS has no <category> tags and no store URLs in description.
-                # Detect platform from title text (most reliable signal available).
-                title_lower = title.lower()
-                if "steam" in title_lower:
-                    platform = "steam"
-                elif "epic" in title_lower:
-                    platform = "epic"
-                elif "gog" in title_lower:
-                    platform = "gog"
-                elif "ubisoft" in title_lower or "uplay" in title_lower:
-                    platform = "ubisoft"
-                elif "origin" in title_lower or " ea " in title_lower:
-                    platform = "origin"
-                elif "humble" in title_lower:
-                    platform = "humble"
-                else:
-                    platform = "other"
+                # Detect platform from platforms field
+                platform = "other"
+                for key, val in _GAMERPOWER_PLATFORM_MAP.items():
+                    if key in platforms_str:
+                        platform = val
+                        break
 
-                # Image: media:thumbnail, then first <img> in description
-                image_url = ""
-                media_thumb = item.find("media:thumbnail", ns)
-                if media_thumb is not None:
-                    image_url = media_thumb.get("url", "")
-                if not image_url:
-                    m = _GG_IMG_RE.search(desc)
-                    if m:
-                        image_url = m.group(1)
+                # Follow redirect to get direct store URL
+                url = gp_url
+                try:
+                    async with self._session.head(gp_url, allow_redirects=False,
+                                                  timeout=aiohttp.ClientTimeout(total=5)) as r:
+                        location = r.headers.get("Location", "")
+                        if location:
+                            url = location
+                except Exception:
+                    pass  # fall back to gamerpower URL
 
-                category = classify_item(title, desc[:300], platform, False)
+                image_url = item.get("thumbnail") or item.get("image") or ""
+                original_price = item.get("worth") or ""
+                category = classify_item(title, platforms_str, platform, False)
 
                 game_id = await db.add_free_game(
                     title=title, url=url, platform=platform,
-                    image_url=image_url, original_price="",
-                    source="ggdeals", category=category,
+                    image_url=image_url, original_price=original_price,
+                    source="gamerpower", category=category,
                 )
                 if game_id:
                     new_games.append({
                         "title": title, "url": url, "platform": platform,
-                        "image_url": image_url, "original_price": "",
-                        "end_date": "", "category": category,
-                        "_desc": desc,
+                        "image_url": image_url, "original_price": original_price,
+                        "end_date": end_date_display, "category": category,
                     })
         except Exception:
-            log.exception("Error fetching GG.deals RSS")
+            log.exception("Error fetching GamerPower giveaways")
         return new_games
 
     async def _enrich_steam_prices(self, games: list[dict]) -> None:
