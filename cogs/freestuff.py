@@ -25,17 +25,6 @@ GG_DEALS_API_KEY    = os.getenv("GG_DEALS_API_KEY", "")
 
 _GG_IMG_RE    = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
 _STEAM_APP_RE = re.compile(r'store\.steampowered\.com/app/(\d+)', re.IGNORECASE)
-_STORE_URL_RE = re.compile(
-    r'https?://(?:'
-    r'store\.steampowered\.com/app/\d+[^"\'<\s]*|'
-    r'store\.epicgames\.com/[^"\'<\s]+|'
-    r'(?:www\.)?gog\.com/(?:en/)?game/[^"\'<\s]+|'
-    r'(?:www\.)?humblebundle\.com/[^"\'<\s]+|'
-    r'(?:www\.)?ubisoft\.com/[^"\'<\s]+|'
-    r'(?:www\.)?ea\.com/[^"\'<\s]+'
-    r')',
-    re.IGNORECASE,
-)
 
 GG_DEALS_CATEGORY_TO_PLATFORM: dict[str, str] = {
     "free steam keys":              "steam",
@@ -531,50 +520,23 @@ class FreeStuff(commands.Cog):
                     except Exception:
                         pass
 
-                # Extract direct store URL from description HTML
-                store_m = _STORE_URL_RE.search(desc)
-                if store_m:
-                    url = store_m.group(0).rstrip(".,)")
-
-                # Platform from <category> tags — exact match first
-                cats = [c.text.lower() for c in item.findall("category") if c.text]
-                platform = "other"
-                for cat in cats:
-                    if cat in GG_DEALS_CATEGORY_TO_PLATFORM:
-                        platform = GG_DEALS_CATEGORY_TO_PLATFORM[cat]
-                        break
-
-                # Keyword fallback
-                if platform == "other":
-                    cat_str = " ".join(cats)
-                    if "steam" in cat_str:
-                        platform = "steam"
-                    elif "epic" in cat_str:
-                        platform = "epic"
-                    elif "gog" in cat_str:
-                        platform = "gog"
-                    elif "ubisoft" in cat_str:
-                        platform = "ubisoft"
-                    elif "origin" in cat_str or "ea" in cat_str:
-                        platform = "origin"
-                    elif "humble" in cat_str:
-                        platform = "humble"
-
-                # Store URL override (most reliable signal)
-                if store_m:
-                    su = store_m.group(0).lower()
-                    if "steampowered" in su:
-                        platform = "steam"
-                    elif "epicgames" in su:
-                        platform = "epic"
-                    elif "gog.com" in su:
-                        platform = "gog"
-                    elif "humblebundle" in su:
-                        platform = "humble"
-                    elif "ubisoft" in su:
-                        platform = "ubisoft"
-                    elif "ea.com" in su:
-                        platform = "origin"
+                # GG.deals RSS has no <category> tags and no store URLs in description.
+                # Detect platform from title text (most reliable signal available).
+                title_lower = title.lower()
+                if "steam" in title_lower:
+                    platform = "steam"
+                elif "epic" in title_lower:
+                    platform = "epic"
+                elif "gog" in title_lower:
+                    platform = "gog"
+                elif "ubisoft" in title_lower or "uplay" in title_lower:
+                    platform = "ubisoft"
+                elif "origin" in title_lower or " ea " in title_lower:
+                    platform = "origin"
+                elif "humble" in title_lower:
+                    platform = "humble"
+                else:
+                    platform = "other"
 
                 # Image: media:thumbnail, then first <img> in description
                 image_url = ""
@@ -586,8 +548,7 @@ class FreeStuff(commands.Cog):
                     if m:
                         image_url = m.group(1)
 
-                flair_text = " ".join(cats) + " " + desc[:200]
-                category = classify_item(title, flair_text, platform, False)
+                category = classify_item(title, desc[:300], platform, False)
 
                 game_id = await db.add_free_game(
                     title=title, url=url, platform=platform,
