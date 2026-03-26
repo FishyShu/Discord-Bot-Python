@@ -29,7 +29,7 @@
     </div>
 
     <div class="form-group">
-        <label for="mention_role_id">Mention Role (optional)</label>
+        <label for="mention_role_id">Global Mention Role <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
         <select name="mention_role_id" id="mention_role_id">
             <option value="">— None —</option>
             {% for role in roles %}
@@ -38,7 +38,27 @@
             {% endif %}
             {% endfor %}
         </select>
-        <small>Select a role to ping when announcements are sent.</small>
+        <small>Mentioned on every free game announcement, regardless of platform.</small>
+    </div>
+
+    <div class="form-group">
+        <label>Per-Platform Mention Roles <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+        <small>Mentioned only when a game from that platform is announced. Stacks with the global role above.</small>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.5rem;margin-top:0.75rem;">
+            {% for p in all_platforms %}
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+                <span style="width:80px;font-size:0.85rem;color:var(--text-muted);">{{ platform_labels[p] }}</span>
+                <select name="platform_role_{{ p }}" style="flex:1;font-size:0.82rem;">
+                    <option value="">— None —</option>
+                    {% for role in roles %}
+                    {% if not role.is_default() %}
+                    <option value="{{ role.id }}" {% if platform_mention_roles.get(p) == role.id|string %}selected{% endif %}>@{{ role.name }}</option>
+                    {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 
     <div class="form-group">
@@ -87,7 +107,6 @@
         <label>Embed Customization</label>
         <small>Control which fields appear in game notification embeds.</small>
 
-        <!-- Color override -->
         <div style="margin-top:0.75rem;">
             <label for="embed_color" style="font-size:0.85rem;">Color override <span style="color:var(--text-muted)">(leave blank for per-platform colors)</span></label>
             <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.25rem;">
@@ -97,7 +116,6 @@
             </div>
         </div>
 
-        <!-- Field toggles -->
         <div style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-top:1rem;">
             {% for field, label in [('price','💰 Price'), ('category','🏷️ Category'), ('platform','🖥️ Platform'), ('expiry','📅 Expiry date'), ('image','🖼️ Banner image')] %}
             <div class="toggle">
@@ -115,7 +133,6 @@
     </div>
 </form>
 
-<!-- Per-category test buttons -->
 {% if cfg.get('channel_id') %}
 <div class="card card-form mt-2">
     <h3>Test Notifications</h3>
@@ -133,6 +150,15 @@
 </div>
 {% endif %}
 
+<div class="card card-form mt-2">
+    <h3>History</h3>
+    <p style="color:var(--text-muted);font-size:0.875rem;margin-bottom:1rem;">
+        Clear the cached free game list so every current freebie is re-announced on the next fetch. Useful for testing.
+    </p>
+    <button class="btn btn-danger" onclick="resetHistory()">🗑️ Reset Game History</button>
+    <p id="reset-status" style="color:var(--text-muted);font-size:0.85rem;margin-top:0.75rem;"></p>
+</div>
+
 {% if recent_games %}
 <div class="card mt-2">
     <h3>Recent Free Games</h3>
@@ -143,16 +169,26 @@
                     <th>Title</th>
                     <th>Platform</th>
                     <th>Category</th>
+                    <th>Source</th>
                     <th>Original Price</th>
                     <th>Discovered</th>
                 </tr>
             </thead>
             <tbody>
+                {% set category_labels = {
+                    'free_to_keep': '🎁 Free to Keep',
+                    'free_weekend': '⏳ Free Weekend',
+                    'other_freebies': '🎮 Freebie',
+                    'gamedev_assets': '🛠️ Game Dev Asset',
+                    'giveaways_rewards': '🎟️ Giveaway'
+                } %}
+                {% set source_labels = {'epic': 'Epic API', 'ggdeals': 'GG.deals', 'reddit': 'Reddit'} %}
                 {% for game in recent_games %}
                 <tr>
-                    <td><a href="{{ game.url }}" target="_blank" rel="noopener">{{ game.title[:60] }}{% if game.title|length > 60 %}...{% endif %}</a></td>
-                    <td>{{ game.platform|title }}</td>
-                    <td>{{ game.get('category', 'free_to_keep') }}</td>
+                    <td><a href="{{ game.url }}" target="_blank" rel="noopener">{{ game.title[:55] }}{% if game.title|length > 55 %}…{% endif %}</a></td>
+                    <td>{{ platform_labels.get(game.platform, game.platform|title) }}</td>
+                    <td>{{ category_labels.get(game.get('category',''), game.get('category','')) }}</td>
+                    <td class="td-muted">{{ source_labels.get(game.source, game.source) }}</td>
                     <td>{{ game.original_price or '—' }}</td>
                     <td class="td-muted">{{ game.discovered_at[:16] }}</td>
                 </tr>
@@ -171,12 +207,14 @@
         <h3 style="margin-bottom:0.75rem;">Embed Preview</h3>
         <p style="color:var(--text-muted);font-size:0.8rem;margin-bottom:1rem;">Updates as you change settings above.</p>
         <div id="embed-preview" style="border-left:4px solid #2d2d2d;padding:12px 14px;background:#2f3136;border-radius:4px;">
-            <div id="prev-title" style="color:#fff;font-weight:bold;font-size:0.95rem;margin-bottom:4px;">Celeste</div>
+            <div id="prev-title" style="color:#00b0f4;font-weight:bold;font-size:0.95rem;margin-bottom:6px;">Celeste</div>
+            <!-- Description block: price + expiry -->
+            <div id="prev-desc" style="margin-bottom:8px;">
+                <div id="prev-price" style="color:#dcddde;font-size:0.85rem;">~~$19.99~~ → <strong>FREE</strong></div>
+                <div id="prev-expiry" style="color:#dcddde;font-size:0.85rem;margin-top:2px;">🕐 Free until: Apr 1, 2026</div>
+            </div>
+            <!-- Inline fields row -->
             <div style="display:flex;gap:1rem;margin-bottom:6px;flex-wrap:wrap;">
-                <div id="prev-price-wrap">
-                    <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Price</div>
-                    <div id="prev-price" style="color:#dcddde;font-size:0.85rem;">~~$19.99~~ → <strong>FREE</strong></div>
-                </div>
                 <div id="prev-category-wrap">
                     <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Category</div>
                     <div id="prev-category" style="color:#dcddde;font-size:0.85rem;">🎁 Free to Keep</div>
@@ -185,10 +223,6 @@
                     <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Platform</div>
                     <div id="prev-platform" style="color:#dcddde;font-size:0.85rem;">Epic Games</div>
                 </div>
-            </div>
-            <div id="prev-expiry-wrap" style="margin-bottom:6px;display:none;">
-                <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Free until</div>
-                <div style="color:#dcddde;font-size:0.85rem;">2026-04-01</div>
             </div>
             <img id="prev-image" src="" alt="" style="width:100%;border-radius:4px;margin-top:4px;display:none;">
             <div id="prev-footer" style="color:#72767d;font-size:0.72rem;margin-top:8px;border-top:1px solid #40444b;padding-top:6px;">Epic Games • Free Games Bot</div>
@@ -217,34 +251,29 @@ const CATEGORY_LABELS = {
 };
 
 function updatePreview() {
-    // Color: custom override or per-platform
     const customColor = document.getElementById('embed_color').value.trim();
     const platEl = document.querySelector('input[name^="platform_"]:checked');
     const platform = platEl ? platEl.name.replace('platform_', '') : 'epic';
     const color = (/^#[0-9a-fA-F]{6}$/.test(customColor)) ? customColor : (PLATFORM_COLORS[platform] || '#5865f2');
     document.getElementById('embed-preview').style.borderLeftColor = color;
 
-    // Platform field
     document.getElementById('prev-platform').textContent = PLATFORM_LABELS[platform] || platform;
     document.getElementById('prev-footer').textContent = (PLATFORM_LABELS[platform] || platform) + ' • Free Games Bot';
 
-    // Category field
     const catEl = document.querySelector('input[name^="filter_"]:checked');
     const cat = catEl ? catEl.name.replace('filter_', '') : 'free_to_keep';
     document.getElementById('prev-category').textContent = CATEGORY_LABELS[cat] || cat;
 
-    // Field visibility
     const showPrice    = document.getElementById('embed_show_price').checked;
     const showCategory = document.getElementById('embed_show_category').checked;
     const showPlatform = document.getElementById('embed_show_platform').checked;
     const showExpiry   = document.getElementById('embed_show_expiry').checked;
-    const showImage    = document.getElementById('embed_show_image').checked;
 
-    document.getElementById('prev-price-wrap').style.display    = showPrice    ? '' : 'none';
+    document.getElementById('prev-price').style.display    = showPrice  ? '' : 'none';
+    document.getElementById('prev-expiry').style.display   = showExpiry ? '' : 'none';
+    document.getElementById('prev-desc').style.display     = (showPrice || showExpiry) ? '' : 'none';
     document.getElementById('prev-category-wrap').style.display = showCategory ? '' : 'none';
     document.getElementById('prev-platform-wrap').style.display = showPlatform ? '' : 'none';
-    document.getElementById('prev-expiry-wrap').style.display   = showExpiry   ? '' : 'none';
-    // Image stays hidden in preview (no real src), just reflect toggle state
     document.getElementById('prev-image').style.display = 'none';
 }
 
@@ -276,6 +305,22 @@ function sendTest(category) {
     const body = new FormData();
     body.append('_csrf_token', csrf);
     fetch(`/freestuff/${GUILD_ID}/test/${category}`, {method: 'POST', body})
+    .then(r => r.json())
+    .then(d => { status.textContent = d.message; })
+    .catch(() => { status.textContent = 'Request failed.'; })
+    .finally(() => { btn.disabled = false; });
+}
+
+function resetHistory() {
+    if (!confirm('Clear all cached free game history? Every current freebie will be re-seeded silently on the next fetch.')) return;
+    const btn = event.target;
+    btn.disabled = true;
+    const status = document.getElementById('reset-status');
+    status.textContent = 'Clearing…';
+    const csrf = document.querySelector('input[name="_csrf_token"]').value;
+    const body = new FormData();
+    body.append('_csrf_token', csrf);
+    fetch(`/freestuff/${GUILD_ID}/reset`, {method: 'POST', body})
     .then(r => r.json())
     .then(d => { status.textContent = d.message; })
     .catch(() => { status.textContent = 'Request failed.'; })

@@ -12,6 +12,12 @@ from . import db
 freestuff_bp = Blueprint("freestuff", __name__)
 
 ALL_CATEGORIES = ["free_to_keep", "free_weekend", "other_freebies", "gamedev_assets", "giveaways_rewards"]
+ALL_PLATFORMS  = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "other"]
+
+PLATFORM_LABELS = {
+    "steam": "Steam", "epic": "Epic Games", "gog": "GOG",
+    "ubisoft": "Ubisoft", "origin": "Origin / EA", "humble": "Humble Bundle", "other": "Other",
+}
 
 _CATEGORY_EXAMPLES = {
     "free_to_keep": {
@@ -102,6 +108,8 @@ async def freestuff_edit(guild_id: int):
         "color":         cfg.get("embed_color") or "",
     }
 
+    platform_mention_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
+
     return await render_template(
         "freestuff_edit.html",
         guild=guild,
@@ -112,6 +120,9 @@ async def freestuff_edit(guild_id: int):
         content_filters=content_filters,
         roles=roles,
         all_categories=ALL_CATEGORIES,
+        all_platforms=ALL_PLATFORMS,
+        platform_labels=PLATFORM_LABELS,
+        platform_mention_roles=platform_mention_roles,
         embed_settings=embed_settings,
     )
 
@@ -140,6 +151,12 @@ async def freestuff_save(guild_id: int):
 
     mention_role_id = form.get("mention_role_id", "") or None
 
+    platform_mention_roles = {}
+    for p in ["steam", "epic", "gog", "ubisoft", "origin", "humble", "other"]:
+        rid = form.get(f"platform_role_{p}", "").strip()
+        if rid:
+            platform_mention_roles[p] = rid
+
     await db.upsert_freestuff_config(
         str(guild_id),
         channel_id=channel_id,
@@ -147,6 +164,7 @@ async def freestuff_save(guild_id: int):
         platforms=json.dumps(selected_platforms),
         content_filters=json.dumps(selected_filters),
         mention_role_id=mention_role_id,
+        platform_mention_roles=json.dumps(platform_mention_roles),
         embed_show_price=1 if form.get("embed_show_price") else 0,
         embed_show_category=1 if form.get("embed_show_category") else 0,
         embed_show_platform=1 if form.get("embed_show_platform") else 0,
@@ -212,3 +230,14 @@ async def freestuff_test(guild_id: int, category: str):
         return jsonify({"message": f"Test embed sent to #{channel.name}."})
     except discord.HTTPException as e:
         return jsonify({"message": f"Failed to send: {e}"}), 500
+
+
+@freestuff_bp.route("/<int:guild_id>/reset", methods=["POST"])
+@login_required
+async def freestuff_reset(guild_id: int):
+    deleted = await db.clear_free_games()
+    bot = current_app.bot
+    cog = bot.get_cog("FreeStuff") if bot else None
+    if cog:
+        cog._seeded = False  # allow next fetch to re-seed without notifying
+    return jsonify({"message": f"Cleared {deleted} cached game(s). Next fetch will re-seed silently."})
