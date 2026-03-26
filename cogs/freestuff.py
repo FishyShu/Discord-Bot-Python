@@ -205,6 +205,7 @@ class FreeStuff(commands.Cog):
     async def cog_load(self):
         await self.refresh_cache()
         self._session = aiohttp.ClientSession()
+        self._seeded = False
         self.check_loop.start()
 
     async def cog_unload(self):
@@ -391,6 +392,13 @@ class FreeStuff(commands.Cog):
         new_games.extend(await self._fetch_epic())
         new_games.extend(await self._fetch_gg_deals_rss())
         await self._enrich_steam_prices(new_games)
+
+        if not self._seeded:
+            # First run after startup: silently seed the DB so existing freebies
+            # are not treated as new. No notifications sent.
+            self._seeded = True
+            log.info("FreeStuff: seeded %d game(s) on startup — no notifications sent.", len(new_games))
+            return []
 
         if new_games:
             await self._notify_guilds(new_games)
