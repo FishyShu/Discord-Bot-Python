@@ -205,7 +205,13 @@ class FreeStuff(commands.Cog):
     async def cog_load(self):
         await self.refresh_cache()
         self._session = aiohttp.ClientSession()
-        self._seeded = False
+        # If reset was triggered (via dashboard or /freestuff reset), skip silent seeding
+        flag = await db.get_setting("freestuff_force_announce", "0")
+        if flag == "1":
+            self._seeded = True
+            await db.set_setting("freestuff_force_announce", "0")
+        else:
+            self._seeded = False
         self.check_loop.start()
 
     async def cog_unload(self):
@@ -334,6 +340,8 @@ class FreeStuff(commands.Cog):
             await interaction.edit_original_response(content="Cancelled.", view=None)
             return
         deleted = await db.clear_free_games()
+        self._seeded = True  # next _fetch_all will announce instead of silently seed
+        await db.set_setting("freestuff_force_announce", "1")
         await interaction.edit_original_response(
             content=f"Cleared **{deleted}** cached entries. Running fetch now...", view=None
         )

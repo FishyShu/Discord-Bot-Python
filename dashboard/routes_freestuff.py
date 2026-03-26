@@ -236,8 +236,9 @@ async def freestuff_test(guild_id: int, category: str):
 @login_required
 async def freestuff_reset(guild_id: int):
     deleted = await db.clear_free_games()
+    await db.set_setting("freestuff_force_announce", "1")
     bot = current_app.bot
     cog = bot.get_cog("FreeStuff") if bot else None
     if cog:
-        cog._seeded = False  # allow next fetch to re-seed without notifying
-    return jsonify({"message": f"Cleared {deleted} cached game(s). Next fetch will re-seed silently."})
+        cog._seeded = True  # next fetch will announce (DB is empty = all games are new)
+    return jsonify({"message": f"Cleared {deleted} cached game(s). All current freebies will be re-announced on the next fetch."})
