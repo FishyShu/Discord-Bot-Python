@@ -1168,6 +1168,14 @@ async def add_free_game(*, title: str, url: str, platform: str,
             return None
 
 
+async def clear_free_games() -> int:
+    """Delete all cached free game entries (forces re-announcement on next fetch). Returns rows deleted."""
+    async with _connect() as db:
+        cursor = await db.execute("DELETE FROM free_games")
+        await db.commit()
+        return cursor.rowcount
+
+
 # --------------- Twitch Drops Notifications ---------------
 
 async def get_twitch_drops_config(guild_id: str) -> Optional[dict]:

@@ -178,6 +178,23 @@ class PlatformConfigView(discord.ui.View):
         self.add_item(PlatformSelect(current_platforms, guild_id))
 
 
+class _ResetConfirmView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=30)
+        self.confirmed = False
+
+    @discord.ui.button(label="Yes, reset", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.confirmed = True
+        await interaction.response.defer()
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        self.stop()
+
+
 class FreeStuff(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -301,6 +318,27 @@ class FreeStuff(commands.Cog):
         await interaction.response.send_message(
             f"Removed mention role for **{PLATFORM_LABELS[platform]}**.",
             ephemeral=True,
+        )
+
+    @freestuff_group.command(name="reset", description="Clear free game history so all current freebies are re-announced (testing)")
+    async def freestuff_reset(self, interaction: discord.Interaction):
+        view = _ResetConfirmView()
+        await interaction.response.send_message(
+            "⚠️ This will delete all cached free game entries and re-announce every current freebie. Continue?",
+            view=view,
+            ephemeral=True,
+        )
+        await view.wait()
+        if not view.confirmed:
+            await interaction.edit_original_response(content="Cancelled.", view=None)
+            return
+        deleted = await db.clear_free_games()
+        await interaction.edit_original_response(
+            content=f"Cleared **{deleted}** cached entries. Running fetch now...", view=None
+        )
+        new_games = await self._fetch_all()
+        await interaction.edit_original_response(
+            content=f"Cleared **{deleted}** cached entries. Re-announced **{len(new_games)}** game(s)."
         )
 
     @freestuff_group.command(name="check", description="Manually check for free games now")
