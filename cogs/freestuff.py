@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 import aiohttp
@@ -15,8 +17,26 @@ from dashboard import db
 
 log = logging.getLogger(__name__)
 
-EPIC_API = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
-REDDIT_URL = "https://www.reddit.com/r/FreeGameFindings/new.json?limit=25"
+EPIC_API           = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
+GG_DEALS_RSS_URL    = "https://gg.deals/us/news/freebies/feed/"
+GG_DEALS_PRICES_URL = "https://api.gg.deals/v1/prices/by-steam-app-id/"
+GG_DEALS_API_KEY    = os.getenv("GG_DEALS_API_KEY", "")
+
+_GG_IMG_RE    = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
+_STEAM_APP_RE = re.compile(r'store\.steampowered\.com/app/(\d+)', re.IGNORECASE)
+
+GG_DEALS_CATEGORY_TO_PLATFORM: dict[str, str] = {
+    "free steam keys":              "steam",
+    "free steam points shop items": "steam",
+    "epic store free games":        "epic",
+    "free gog games":               "gog",
+    "origin free games":            "origin",
+    "humble bundle free games":     "humble",
+    "itch.io free games":           "other",
+    "free twitch drops":            "other",
+    "free beta keys":               "other",
+    "free game trials":             "other",
+}
 
 PLATFORM_COLORS = {
     "epic":    0x2D2D2D,
@@ -44,18 +64,6 @@ CATEGORY_KEYWORDS = {
 }
 
 ALL_CATEGORIES = ["free_to_keep", "free_weekend", "other_freebies", "gamedev_assets", "giveaways_rewards"]
-
-REDDIT_PLATFORM_RE = re.compile(r"\[(Steam|Epic|GOG|Ubisoft|Origin|Humble|Epic Games)\]", re.IGNORECASE)
-
-_REDDIT_NOISE_LEADING = re.compile(r"^(\[[^\]]{1,30}\]\s*)+", re.IGNORECASE)
-_REDDIT_NOISE_TRAILING = re.compile(r"[\(\[][^\)\]]{1,50}[\)\]]\s*$", re.IGNORECASE)
-
-
-def _clean_reddit_title(raw: str) -> str:
-    title = raw.strip()
-    title = _REDDIT_NOISE_LEADING.sub("", title).strip()
-    title = _REDDIT_NOISE_TRAILING.sub("", title).strip()
-    return title or raw.strip()
 
 ALL_PLATFORMS = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "other"]
 
@@ -343,7 +351,8 @@ class FreeStuff(commands.Cog):
         """Fetch from all sources, dedup, notify guilds. Returns list of new games."""
         new_games = []
         new_games.extend(await self._fetch_epic())
-        new_games.extend(await self._fetch_reddit())
+        new_games.extend(await self._fetch_gg_deals_rss())
+        await self._enrich_steam_prices(new_games)
 
         if new_games:
             await self._notify_guilds(new_games)
@@ -425,49 +434,97 @@ class FreeStuff(commands.Cog):
             log.exception("Error fetching Epic free games")
         return new_games
 
-    async def _fetch_reddit(self) -> list[dict]:
+    async def _fetch_gg_deals_rss(self) -> list[dict]:
         new_games = []
         try:
             headers = {"User-Agent": "DiscordBot/1.0"}
-            async with self._session.get(REDDIT_URL, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            async with self._session.get(GG_DEALS_RSS_URL, headers=headers,
+                                         timeout=aiohttp.ClientTimeout(total=15)) as resp:
                 if resp.status != 200:
                     return []
-                data = await resp.json()
+                text = await resp.text()
 
-            posts = data.get("data", {}).get("children", [])
-            for post in posts:
-                pdata = post.get("data", {})
-                title = _clean_reddit_title(pdata.get("title", ""))
-                url = pdata.get("url", "")
-                if not url or pdata.get("is_self"):
+            root = ET.fromstring(text)
+            ns = {"media": "http://search.yahoo.com/mrss/"}
+            for item in root.findall(".//item"):
+                title = (item.findtext("title") or "").strip()
+                url   = (item.findtext("link") or "").strip()
+                desc  = (item.findtext("description") or "")
+                if not title or not url:
                     continue
 
-                # Parse platform from title
-                m = REDDIT_PLATFORM_RE.search(title)
-                platform = m.group(1).lower() if m else "other"
-                if platform == "epic games":
-                    platform = "epic"
+                # Platform from <category> tags
+                cats = [c.text.lower() for c in item.findall("category") if c.text]
+                platform = "other"
+                for cat in cats:
+                    if cat in GG_DEALS_CATEGORY_TO_PLATFORM:
+                        platform = GG_DEALS_CATEGORY_TO_PLATFORM[cat]
+                        break
 
-                richtext = pdata.get("link_flair_richtext") or []
-                flair = pdata.get("link_flair_text") or (richtext[0].get("t", "") if richtext else "")
-                category = classify_item(title, flair, platform, False)
-                image_url = pdata.get("thumbnail", "")
-                if not image_url.startswith("http"):
-                    image_url = ""
+                # Image: media:thumbnail, then first <img> in description
+                image_url = ""
+                media_thumb = item.find("media:thumbnail", ns)
+                if media_thumb is not None:
+                    image_url = media_thumb.get("url", "")
+                if not image_url:
+                    m = _GG_IMG_RE.search(desc)
+                    if m:
+                        image_url = m.group(1)
+
+                category = classify_item(title, " ".join(cats), platform, False)
 
                 game_id = await db.add_free_game(
                     title=title, url=url, platform=platform,
-                    source="reddit", category=category,
+                    image_url=image_url, original_price="",
+                    source="ggdeals", category=category,
                 )
                 if game_id:
                     new_games.append({
                         "title": title, "url": url, "platform": platform,
                         "image_url": image_url, "original_price": "",
                         "end_date": "", "category": category,
+                        "_desc": desc,
                     })
         except Exception:
-            log.exception("Error fetching Reddit free games")
+            log.exception("Error fetching GG.deals RSS")
         return new_games
+
+    async def _enrich_steam_prices(self, games: list[dict]) -> None:
+        """Fill original_price from GG.deals Prices API for Steam games with a Steam App ID."""
+        if not GG_DEALS_API_KEY:
+            return
+
+        app_id_map: dict[str, dict] = {}
+        for game in games:
+            if game["platform"] != "steam" or game.get("original_price"):
+                continue
+            search_str = game.get("url", "") + game.get("_desc", "")
+            m = _STEAM_APP_RE.search(search_str)
+            if m:
+                app_id_map[m.group(1)] = game
+
+        if not app_id_map:
+            return
+
+        ids = list(app_id_map.keys())
+        for i in range(0, len(ids), 100):
+            chunk = ids[i:i + 100]
+            try:
+                params = {"key": GG_DEALS_API_KEY, "ids": ",".join(chunk)}
+                async with self._session.get(GG_DEALS_PRICES_URL, params=params,
+                                             timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        continue
+                    data = await resp.json()
+                for app_id, entry in (data.get("data") or {}).items():
+                    if entry and app_id in app_id_map:
+                        prices = entry.get("prices") or {}
+                        hist = prices.get("historicalRetail")
+                        currency = prices.get("currency", "USD")
+                        if hist:
+                            app_id_map[app_id]["original_price"] = f"{hist} {currency}"
+            except Exception:
+                log.exception("Error fetching GG.deals prices (chunk %d)", i)
 
     async def _send_with_ratelimit(self, channel, embed, content=None):
         """Send with semaphore concurrency limit and 429 retry-after handling."""
