@@ -22,6 +22,7 @@ GG_DEALS_PRICES_URL = "https://api.gg.deals/v1/prices/by-steam-app-id/"
 GG_DEALS_API_KEY    = os.getenv("GG_DEALS_API_KEY", "")
 
 _STEAM_APP_RE = re.compile(r'store\.steampowered\.com/app/(\d+)', re.IGNORECASE)
+_EPIC_SLUG_RE = re.compile(r'store\.epicgames\.com/(?:en-US/)?p/([^/?#]+)', re.IGNORECASE)
 
 _GAMERPOWER_PLATFORM_MAP: dict[str, str] = {
     "epic games store": "epic",
@@ -93,12 +94,19 @@ def build_game_embed(
     show_platform: bool = True,
     show_expiry: bool = True,
     show_image: bool = True,
+    description: str = "",
+    show_description: bool = True,
+    show_client_link: bool = True,
 ) -> discord.Embed:
     color = int(embed_color.lstrip("#"), 16) if embed_color else PLATFORM_COLORS.get(platform, 0x5865F2)
     embed = discord.Embed(title=title, url=url, color=color)
 
-    # Description: price + expiry (prominent, top of embed)
+    # Description block: game description, then price + expiry
     desc_lines = []
+    if show_description and description:
+        truncated = description[:200] + ("…" if len(description) > 200 else "")
+        desc_lines.append(truncated)
+        desc_lines.append("")  # blank line separator
     if show_price:
         price_str = f"~~{original_price}~~ → **FREE**" if original_price else "**FREE**"
         desc_lines.append(price_str)
@@ -117,6 +125,17 @@ def build_game_embed(
         embed.add_field(name="Category", value=CATEGORY_LABELS.get(category, category), inline=True)
     if show_platform:
         embed.add_field(name="Platform", value=PLATFORM_LABELS.get(platform, platform.title()), inline=True)
+
+    # Links field with browser + client deep links
+    if show_client_link and url:
+        link_parts = [f"[🌐 Open in Browser]({url})"]
+        steam_m = _STEAM_APP_RE.search(url)
+        epic_m = _EPIC_SLUG_RE.search(url)
+        if steam_m:
+            link_parts.append(f"[🎮 Open in Steam Client](steam://store/{steam_m.group(1)})")
+        elif epic_m:
+            link_parts.append(f"[🚀 Open in Epic Launcher](com.epicgames.launcher://store/product/{epic_m.group(1)})")
+        embed.add_field(name="Links", value=" • ".join(link_parts), inline=False)
 
     if show_image and image_url:
         embed.set_image(url=image_url)
@@ -480,6 +499,7 @@ class FreeStuff(commands.Cog):
                                 "title": title, "url": url, "platform": "epic",
                                 "image_url": image_url, "original_price": original,
                                 "end_date": end_date_display, "category": category,
+                                "source": "epic", "source_url": "", "description": "",
                             })
         except Exception:
             log.exception("Error fetching Epic free games")
@@ -537,20 +557,24 @@ class FreeStuff(commands.Cog):
                 except Exception:
                     pass  # fall back to gamerpower URL
 
-                image_url = item.get("thumbnail") or item.get("image") or ""
+                image_url = item.get("image") or item.get("thumbnail") or ""
                 original_price = item.get("worth") or ""
                 category = classify_item(title, platforms_str, platform, False)
+                description = (item.get("description") or "")[:300]
+                source_url = gp_url  # original gamerpower URL before redirect
 
                 game_id = await db.add_free_game(
                     title=title, url=url, platform=platform,
                     image_url=image_url, original_price=original_price,
                     source="gamerpower", category=category,
+                    source_url=source_url, description=description,
                 )
                 if game_id:
                     new_games.append({
                         "title": title, "url": url, "platform": platform,
                         "image_url": image_url, "original_price": original_price,
                         "end_date": end_date_display, "category": category,
+                        "source": "gamerpower", "source_url": source_url, "description": description,
                     })
         except Exception:
             log.exception("Error fetching GamerPower giveaways")
@@ -631,6 +655,15 @@ class FreeStuff(commands.Cog):
                     continue
                 if game.get("category", "free_to_keep") not in guild_filters:
                     continue
+                # Epic API toggle: skip Epic API-sourced games if disabled
+                if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
+                    continue
+
+                # Choose link URL based on guild setting
+                link_type = cfg.get("link_type", "store")
+                game_url = game["url"]
+                if link_type == "gamerpower" and game.get("source_url"):
+                    game_url = game["source_url"]
 
                 mention_parts = []
                 if cfg.get("mention_role_id"):
@@ -642,7 +675,7 @@ class FreeStuff(commands.Cog):
 
                 embed = build_game_embed(
                     title=game["title"],
-                    url=game["url"],
+                    url=game_url,
                     platform=game["platform"],
                     image_url=game.get("image_url", ""),
                     original_price=game.get("original_price", ""),
@@ -654,6 +687,9 @@ class FreeStuff(commands.Cog):
                     show_platform=bool(cfg.get("embed_show_platform", 1)),
                     show_expiry=bool(cfg.get("embed_show_expiry", 1)),
                     show_image=bool(cfg.get("embed_show_image", 1)),
+                    description=game.get("description", ""),
+                    show_description=bool(cfg.get("embed_show_description", 1)),
+                    show_client_link=bool(cfg.get("embed_show_client_link", 1)),
                 )
                 embed.timestamp = datetime.now(timezone.utc)
 

@@ -100,15 +100,19 @@ async def freestuff_edit(guild_id: int):
     roles = sorted(guild.roles, key=lambda r: r.position, reverse=True)
 
     embed_settings = {
-        "show_price":    bool(cfg.get("embed_show_price", 1)),
-        "show_category": bool(cfg.get("embed_show_category", 1)),
-        "show_platform": bool(cfg.get("embed_show_platform", 1)),
-        "show_expiry":   bool(cfg.get("embed_show_expiry", 1)),
-        "show_image":    bool(cfg.get("embed_show_image", 1)),
-        "color":         cfg.get("embed_color") or "",
+        "show_price":       bool(cfg.get("embed_show_price", 1)),
+        "show_category":    bool(cfg.get("embed_show_category", 1)),
+        "show_platform":    bool(cfg.get("embed_show_platform", 1)),
+        "show_expiry":      bool(cfg.get("embed_show_expiry", 1)),
+        "show_image":       bool(cfg.get("embed_show_image", 1)),
+        "show_description": bool(cfg.get("embed_show_description", 1)),
+        "show_client_link": bool(cfg.get("embed_show_client_link", 1)),
+        "color":            cfg.get("embed_color") or "",
     }
 
     platform_mention_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
+
+    source_labels = {"epic": "Epic API", "gamerpower": "GamerPower", "reddit": "Reddit"}
 
     return await render_template(
         "freestuff_edit.html",
@@ -124,6 +128,7 @@ async def freestuff_edit(guild_id: int):
         platform_labels=PLATFORM_LABELS,
         platform_mention_roles=platform_mention_roles,
         embed_settings=embed_settings,
+        source_labels=source_labels,
     )
 
 
@@ -171,6 +176,10 @@ async def freestuff_save(guild_id: int):
         embed_show_expiry=1 if form.get("embed_show_expiry") else 0,
         embed_show_image=1 if form.get("embed_show_image") else 0,
         embed_color=form.get("embed_color", "").strip() or None,
+        use_epic_api=1 if form.get("use_epic_api") else 0,
+        link_type=form.get("link_type", "store"),
+        embed_show_client_link=1 if form.get("embed_show_client_link") else 0,
+        embed_show_description=1 if form.get("embed_show_description") else 0,
     )
 
     cog = bot.get_cog("FreeStuff")
@@ -200,7 +209,21 @@ async def freestuff_test(guild_id: int, category: str):
     if not channel:
         return jsonify({"message": "Notification channel not found."}), 400
 
-    ex = _CATEGORY_EXAMPLES[category]
+    # Try real game from DB first, fall back to example
+    real_games = await db.get_free_games_by_category(category, limit=1)
+    if real_games:
+        g = real_games[0]
+        ex = {
+            "title": g["title"], "platform": g["platform"],
+            "original_price": g.get("original_price", ""),
+            "url": g["url"], "image_url": g.get("image_url", ""),
+            "end_date": (g.get("discovered_at", "") or "")[:10],
+            "category": g["category"],
+            "description": g.get("description", "") or "",
+        }
+    else:
+        ex = dict(_CATEGORY_EXAMPLES[category])
+        ex.setdefault("description", "")
 
     # Import here to avoid circular; build_game_embed is a plain function
     from cogs.freestuff import build_game_embed, PLATFORM_LABELS
@@ -218,6 +241,9 @@ async def freestuff_test(guild_id: int, category: str):
         show_platform=bool(cfg.get("embed_show_platform", 1)),
         show_expiry=bool(cfg.get("embed_show_expiry", 1)),
         show_image=bool(cfg.get("embed_show_image", 1)),
+        description=ex["description"],
+        show_description=bool(cfg.get("embed_show_description", 1)),
+        show_client_link=bool(cfg.get("embed_show_client_link", 1)),
     )
     embed.set_footer(text=f"{PLATFORM_LABELS.get(ex['platform'], ex['platform'].title())} • Free Games Bot (TEST)")
     embed.timestamp = datetime.now(timezone.utc)

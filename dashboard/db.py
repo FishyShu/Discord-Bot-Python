@@ -378,6 +378,26 @@ async def init_db():
             await db.execute("ALTER TABLE free_games ADD COLUMN category TEXT NOT NULL DEFAULT 'free_to_keep'")
         except aiosqlite.OperationalError:
             pass
+        # Add source_url and description to free_games
+        for col, definition in [
+            ("source_url",  "TEXT"),
+            ("description", "TEXT"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE free_games ADD COLUMN {col} {definition}")
+            except aiosqlite.OperationalError:
+                pass
+        # Add new feature columns to freestuff_config
+        for col, definition in [
+            ("use_epic_api",           "INTEGER NOT NULL DEFAULT 1"),
+            ("link_type",              "TEXT NOT NULL DEFAULT 'store'"),
+            ("embed_show_client_link", "INTEGER NOT NULL DEFAULT 1"),
+            ("embed_show_description", "INTEGER NOT NULL DEFAULT 1"),
+        ]:
+            try:
+                await db.execute(f"ALTER TABLE freestuff_config ADD COLUMN {col} {definition}")
+            except aiosqlite.OperationalError:
+                pass
         # Add embed customization columns to twitch_drops_config
         for col, definition in [
             ("embed_show_game",        "INTEGER NOT NULL DEFAULT 1"),
@@ -1152,15 +1172,26 @@ async def get_free_games(limit: int = 50) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+async def get_free_games_by_category(category: str, limit: int = 1) -> list[dict]:
+    async with _connect() as db:
+        cursor = await db.execute(
+            "SELECT * FROM free_games WHERE category = ? ORDER BY discovered_at DESC LIMIT ?",
+            (category, limit)
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
 async def add_free_game(*, title: str, url: str, platform: str,
                          image_url: Optional[str] = None, original_price: Optional[str] = None,
-                         source: str, category: str = "free_to_keep") -> Optional[int]:
+                         source: str, category: str = "free_to_keep",
+                         source_url: Optional[str] = None, description: Optional[str] = None) -> Optional[int]:
     """Insert a free game, returns None if URL already exists."""
     async with _connect() as db:
         try:
             cursor = await db.execute(
-                "INSERT INTO free_games (title, url, platform, image_url, original_price, source, category) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (title, url, platform, image_url, original_price, source, category),
+                "INSERT INTO free_games (title, url, platform, image_url, original_price, source, category, source_url, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (title, url, platform, image_url, original_price, source, category, source_url, description),
             )
             await db.commit()
             return cursor.lastrowid
