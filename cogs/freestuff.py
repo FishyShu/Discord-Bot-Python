@@ -201,7 +201,7 @@ class FreeStuff(commands.Cog):
         self.bot = bot
         self._cache: dict[str, dict] = {}
         self._session: aiohttp.ClientSession | None = None
-        self._send_semaphore = asyncio.Semaphore(10)
+        self._send_semaphore = asyncio.Semaphore(1)
 
     async def cog_load(self):
         await self.refresh_cache()
@@ -604,7 +604,7 @@ class FreeStuff(commands.Cog):
                 log.exception("Error fetching GG.deals prices (chunk %d)", i)
 
     async def _send_with_ratelimit(self, channel, embed, content=None):
-        """Send with semaphore concurrency limit and 429 retry-after handling."""
+        """Send one message at a time with a fixed delay to avoid per-channel 429s."""
         async with self._send_semaphore:
             try:
                 await channel.send(content=content, embed=embed)
@@ -618,6 +618,8 @@ class FreeStuff(commands.Cog):
                         log.warning("Failed to send free game notification after retry to %s", channel.id)
                 else:
                     log.warning("Failed to send free game notification to %s: %s", channel.id, e)
+            finally:
+                await asyncio.sleep(1.5)  # stay well under Discord's 5 msg/5s channel limit
 
     async def _notify_guilds(self, games: list[dict]):
         configs = await db.get_all_freestuff_configs()
