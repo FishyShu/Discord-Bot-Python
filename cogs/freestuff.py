@@ -179,12 +179,12 @@ def build_game_embed(
         link_parts = [f"[🌐 Open in Browser]({url})"]
         if show_client_link:
             client_url = store_url or url
-            steam_m = _STEAM_APP_RE.search(client_url)
-            epic_m = _EPIC_SLUG_RE.search(client_url)
-            if steam_m:
-                link_parts.append(f"[🎮 Open in Steam Client](steam://store/{steam_m.group(1)})")
-            elif epic_m:
-                link_parts.append(f"[🚀 Open in Epic Launcher](com.epicgames.launcher://store/product/{epic_m.group(1)})")
+            if "steampowered.com" in client_url.lower():
+                link_parts.append(f"[🎮 Open in Steam Client](steam://openurl/{client_url})")
+            else:
+                epic_m = _EPIC_SLUG_RE.search(client_url)
+                if epic_m:
+                    link_parts.append(f"[🚀 Open in Epic Launcher](com.epicgames.launcher://store/product/{epic_m.group(1)})")
         embed.add_field(name="Links", value=" • ".join(link_parts), inline=False)
 
     if show_image and image_url:
@@ -679,14 +679,13 @@ class FreeStuff(commands.Cog):
                         platform = val
                         break
 
-                # Follow redirect to get direct store URL
+                # Follow redirects to get direct store URL
                 url = gp_url
                 try:
-                    async with self._session.head(gp_url, allow_redirects=False,
+                    async with self._session.head(gp_url, allow_redirects=True,
                                                   timeout=aiohttp.ClientTimeout(total=5)) as r:
-                        location = r.headers.get("Location", "")
-                        if location:
-                            url = location
+                        if str(r.url) != gp_url:
+                            url = str(r.url)
                 except Exception:
                     pass  # fall back to gamerpower URL
 

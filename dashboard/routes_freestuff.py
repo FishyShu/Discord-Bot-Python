@@ -209,12 +209,6 @@ async def freestuff_test(guild_id: int, category: str):
     if not channel:
         return jsonify({"message": "Notification channel not found."}), 400
 
-    # Check guild filters — don't send if category or platform is disabled
-    guild_filters = json.loads(cfg.get("content_filters") or
-        '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
-    if category not in guild_filters:
-        return jsonify({"message": f"Category '{category}' is disabled for this server. Enable it in settings first."}), 400
-
     # Try real game from DB first, fall back to example
     real_games = await db.get_free_games_by_category(category, limit=1)
     if real_games:
@@ -230,10 +224,6 @@ async def freestuff_test(guild_id: int, category: str):
     else:
         ex = dict(_CATEGORY_EXAMPLES[category])
         ex.setdefault("description", "")
-
-    allowed_platforms = json.loads(cfg.get("platforms", "[]"))
-    if allowed_platforms and ex["platform"] not in allowed_platforms:
-        return jsonify({"message": f"Platform '{ex['platform']}' is disabled for this server. The test game uses this platform."}), 400
 
     # Import here to avoid circular; build_game_embed is a plain function
     from cogs.freestuff import build_game_embed, PLATFORM_LABELS
