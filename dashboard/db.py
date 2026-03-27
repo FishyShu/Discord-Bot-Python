@@ -1192,7 +1192,7 @@ async def add_free_game(*, title: str, url: str, platform: str,
                          image_url: Optional[str] = None, original_price: Optional[str] = None,
                          source: str, category: str = "free_to_keep",
                          source_url: Optional[str] = None, description: Optional[str] = None) -> Optional[int]:
-    """Insert a free game, returns None if URL already exists."""
+    """Insert a free game, returns None if URL already exists. Updates category on conflict."""
     async with _connect() as db:
         try:
             cursor = await db.execute(
@@ -1202,6 +1202,11 @@ async def add_free_game(*, title: str, url: str, platform: str,
             await db.commit()
             return cursor.lastrowid
         except aiosqlite.IntegrityError:
+            await db.execute(
+                "UPDATE free_games SET category = ? WHERE url = ?",
+                (category, url),
+            )
+            await db.commit()
             return None
 
 
