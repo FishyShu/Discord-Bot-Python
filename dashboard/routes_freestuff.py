@@ -12,12 +12,13 @@ from . import db
 freestuff_bp = Blueprint("freestuff", __name__)
 
 ALL_CATEGORIES = ["free_to_keep", "free_weekend", "dlc", "loot", "other_freebies", "gamedev_assets", "giveaways_rewards"]
-ALL_PLATFORMS  = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "itchio", "other"]
+ALL_PLATFORMS  = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "itchio", "xbox", "playstation", "nintendo", "other"]
 
 PLATFORM_LABELS = {
     "steam": "Steam", "epic": "Epic Games", "gog": "GOG",
     "ubisoft": "Ubisoft", "origin": "Origin / EA", "humble": "Humble Bundle",
-    "itchio": "itch.io", "other": "Other",
+    "itchio": "itch.io", "xbox": "Xbox", "playstation": "PlayStation",
+    "nintendo": "Nintendo", "other": "Other",
 }
 
 _CATEGORY_EXAMPLES = {

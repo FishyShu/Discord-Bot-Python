@@ -29,7 +29,7 @@ GG_DEALS_API_KEY    = os.getenv("GG_DEALS_API_KEY", "")
 _STEAM_APP_RE = re.compile(r'store\.steampowered\.com/app/(\d+)', re.IGNORECASE)
 _EPIC_PATH_RE = re.compile(r'store\.epicgames\.com/(?:[a-z]{2}(?:-[A-Z]{2})?/)?((?:p|product)/[^/?#]+)', re.IGNORECASE)
 
-REDDIT_PLATFORM_RE = re.compile(r"\[(Steam|Epic|GOG|Ubisoft|Origin|Humble|Epic Games|itch\.io)\]", re.IGNORECASE)
+REDDIT_PLATFORM_RE = re.compile(r"\[(Steam|Epic|GOG|Ubisoft|Origin|Humble|Epic Games|itch\.io|Xbox|PlayStation|PS4|PS5|PSN|Nintendo|Switch)\]", re.IGNORECASE)
 _REDDIT_NOISE_LEADING = re.compile(r"^(\[[^\]]{1,30}\]\s*)+", re.IGNORECASE)
 _REDDIT_NOISE_TRAILING = re.compile(r"[\(\[][^\)\]]{1,50}[\)\]]\s*$", re.IGNORECASE)
 
@@ -50,6 +50,14 @@ _GAMERPOWER_PLATFORM_MAP: dict[str, str] = {
     "origin":           "origin",
     "ea app":           "origin",
     "itch.io":          "itchio",
+    "xbox one":         "xbox",
+    "xbox 360":         "xbox",
+    "xbox series x|s":  "xbox",
+    "playstation 4":    "playstation",
+    "playstation 5":    "playstation",
+    "ps4":              "playstation",
+    "ps5":              "playstation",
+    "nintendo switch":  "nintendo",
 }
 
 PLATFORM_COLORS = {
@@ -60,6 +68,9 @@ PLATFORM_COLORS = {
     "origin":  0xF26000,
     "humble":  0xCC3D0D,
     "itchio":  0xFA5C5C,
+    "xbox":    0x107C10,
+    "playstation": 0x003087,
+    "nintendo": 0xE60012,
     "other":   0x5865F2,
 }
 
@@ -86,7 +97,7 @@ CATEGORY_KEYWORDS = {
 
 ALL_CATEGORIES = ["free_to_keep", "free_weekend", "dlc", "loot", "other_freebies", "gamedev_assets", "giveaways_rewards"]
 
-ALL_PLATFORMS = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "itchio", "other"]
+ALL_PLATFORMS = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "itchio", "xbox", "playstation", "nintendo", "other"]
 
 PLATFORM_LABELS = {
     "steam": "Steam",
@@ -96,6 +107,9 @@ PLATFORM_LABELS = {
     "origin": "Origin / EA",
     "humble": "Humble Bundle",
     "itchio": "itch.io",
+    "xbox": "Xbox",
+    "playstation": "PlayStation",
+    "nintendo": "Nintendo",
     "other": "Other",
 }
 
@@ -107,6 +121,9 @@ PLATFORM_ICONS = {
     "origin":  "https://cdn.simpleicons.org/ea/white",
     "humble":  "https://cdn.simpleicons.org/humblebundle/white",
     "itchio":  "https://cdn.simpleicons.org/itchdotio/white",
+    "xbox":    "https://cdn.simpleicons.org/xbox/white",
+    "playstation": "https://cdn.simpleicons.org/playstation/white",
+    "nintendo": "https://cdn.simpleicons.org/nintendo/white",
     "other":   "https://cdn.simpleicons.org/gamepad/white",
 }
 
@@ -146,6 +163,10 @@ _PLATFORM_DOMAIN_MAP: list[tuple[str, str]] = [
     ("origin.com", "origin"),
     ("humblebundle.com", "humble"),
     ("itch.io", "itchio"),
+    ("xbox.com", "xbox"),
+    ("microsoft.com/store", "xbox"),
+    ("playstation.com", "playstation"),
+    ("nintendo.com", "nintendo"),
 ]
 
 
@@ -241,7 +262,10 @@ PLATFORM_EMOJIS = {
     "origin": "\U0001f3c3",     # runner
     "humble": "\U00002764",     # heart
     "itchio": "\U0001f3b2",     # game die
-    "other": "\U0001f4e6",      # package
+    "xbox": "\U0001f7e2",        # green circle
+    "playstation": "\U0001f535", # blue circle
+    "nintendo": "\U0001f534",    # red circle
+    "other": "\U0001f4e6",       # package
 }
 
 
@@ -761,7 +785,8 @@ class FreeStuff(commands.Cog):
 
                 # Skip mobile-only (no PC/store platform)
                 platforms_str = (item.get("platforms") or "").lower()
-                pc_stores = ("pc", "steam", "epic", "gog", "humble", "ubisoft", "origin", "drm-free", "itch")
+                pc_stores = ("pc", "steam", "epic", "gog", "humble", "ubisoft", "origin", "drm-free", "itch",
+                             "xbox", "playstation", "ps4", "ps5", "nintendo", "switch")
                 if not any(p in platforms_str for p in pc_stores):
                     log.debug("GamerPower: skipping %r -- mobile-only (platforms=%r)", title, platforms_str)
                     continue
@@ -870,6 +895,12 @@ class FreeStuff(commands.Cog):
                     platform = "epic"
                 elif platform == "itch.io":
                     platform = "itchio"
+                elif platform in ("ps4", "ps5", "psn", "playstation"):
+                    platform = "playstation"
+                elif platform in ("xbox",):
+                    platform = "xbox"
+                elif platform in ("switch", "nintendo"):
+                    platform = "nintendo"
 
                 # Override platform from the actual URL
                 url_platform = _detect_platform_from_url(url)
