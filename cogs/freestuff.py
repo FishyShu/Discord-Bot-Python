@@ -92,12 +92,25 @@ PLATFORM_ICONS = {
 }
 
 
+_GP_TYPE_TO_CATEGORY: dict[str, str] = {
+    "game":          "free_to_keep",
+    "loot":          "other_freebies",
+    "beta":          "giveaways_rewards",
+    "early access":  "giveaways_rewards",
+    "dlc":           "other_freebies",
+}
+
+
 def classify_item(title: str, flair: str | None, platform: str, is_free_weekend: bool, *, gp_type: str | None = None) -> str:
-    text = (title + " " + (flair or "")).lower()
     if is_free_weekend:
         return "free_weekend"
-    if gp_type and gp_type.upper() == "DLC":
-        return "other_freebies"
+    # Use GamerPower's own type as primary signal
+    if gp_type:
+        mapped = _GP_TYPE_TO_CATEGORY.get(gp_type.lower())
+        if mapped:
+            return mapped
+    # Keyword heuristics as fallback
+    text = (title + " " + (flair or "")).lower()
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw in text for kw in keywords):
             return category
@@ -736,7 +749,7 @@ class FreeStuff(commands.Cog):
                 description = (item.get("description") or "")[:300]
                 source_url = gp_url  # original gamerpower URL before redirect
 
-                log.debug("GamerPower: %r — platform=%s, category=%s", title, platform, category)
+                log.debug("GamerPower: %r — gp_type=%s, platform=%s, category=%s", title, item.get("type"), platform, category)
                 game_id = await db.add_free_game(
                     title=title, url=url, platform=platform,
                     image_url=image_url, original_price=original_price,
