@@ -12,11 +12,12 @@ from . import db
 freestuff_bp = Blueprint("freestuff", __name__)
 
 ALL_CATEGORIES = ["free_to_keep", "free_weekend", "other_freebies", "gamedev_assets", "giveaways_rewards"]
-ALL_PLATFORMS  = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "other"]
+ALL_PLATFORMS  = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "itchio", "other"]
 
 PLATFORM_LABELS = {
     "steam": "Steam", "epic": "Epic Games", "gog": "GOG",
-    "ubisoft": "Ubisoft", "origin": "Origin / EA", "humble": "Humble Bundle", "other": "Other",
+    "ubisoft": "Ubisoft", "origin": "Origin / EA", "humble": "Humble Bundle",
+    "itchio": "itch.io", "other": "Other",
 }
 
 _CATEGORY_EXAMPLES = {
@@ -145,10 +146,9 @@ async def freestuff_save(guild_id: int):
     channel_id = form.get("channel_id", "")
     enabled = 1 if form.get("enabled") else 0
 
-    platform_options = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "other"]
-    selected_platforms = [p for p in platform_options if form.get(f"platform_{p}")]
+    selected_platforms = [p for p in ALL_PLATFORMS if form.get(f"platform_{p}")]
     if not selected_platforms:
-        selected_platforms = platform_options
+        selected_platforms = list(ALL_PLATFORMS)
 
     selected_filters = [c for c in ALL_CATEGORIES if form.get(f"filter_{c}")]
     if not selected_filters:
@@ -157,7 +157,7 @@ async def freestuff_save(guild_id: int):
     mention_role_id = form.get("mention_role_id", "") or None
 
     platform_mention_roles = {}
-    for p in ["steam", "epic", "gog", "ubisoft", "origin", "humble", "other"]:
+    for p in ALL_PLATFORMS:
         rid = form.get(f"platform_role_{p}", "").strip()
         if rid:
             platform_mention_roles[p] = rid
@@ -209,6 +209,12 @@ async def freestuff_test(guild_id: int, category: str):
     if not channel:
         return jsonify({"message": "Notification channel not found."}), 400
 
+    # Check guild filters — don't send if category or platform is disabled
+    guild_filters = json.loads(cfg.get("content_filters") or
+        '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
+    if category not in guild_filters:
+        return jsonify({"message": f"Category '{category}' is disabled for this server. Enable it in settings first."}), 400
+
     # Try real game from DB first, fall back to example
     real_games = await db.get_free_games_by_category(category, limit=1)
     if real_games:
@@ -224,6 +230,10 @@ async def freestuff_test(guild_id: int, category: str):
     else:
         ex = dict(_CATEGORY_EXAMPLES[category])
         ex.setdefault("description", "")
+
+    allowed_platforms = json.loads(cfg.get("platforms", "[]"))
+    if allowed_platforms and ex["platform"] not in allowed_platforms:
+        return jsonify({"message": f"Platform '{ex['platform']}' is disabled for this server. The test game uses this platform."}), 400
 
     # Import here to avoid circular; build_game_embed is a plain function
     from cogs.freestuff import build_game_embed, PLATFORM_LABELS

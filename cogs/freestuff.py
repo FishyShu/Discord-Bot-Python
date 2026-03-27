@@ -32,6 +32,7 @@ _GAMERPOWER_PLATFORM_MAP: dict[str, str] = {
     "ubisoft":          "ubisoft",
     "origin":           "origin",
     "ea app":           "origin",
+    "itch.io":          "itchio",
 }
 
 PLATFORM_COLORS = {
@@ -41,6 +42,7 @@ PLATFORM_COLORS = {
     "ubisoft": 0x0070F3,
     "origin":  0xF26000,
     "humble":  0xCC3D0D,
+    "itchio":  0xFA5C5C,
     "other":   0x5865F2,
 }
 
@@ -61,7 +63,7 @@ CATEGORY_KEYWORDS = {
 
 ALL_CATEGORIES = ["free_to_keep", "free_weekend", "other_freebies", "gamedev_assets", "giveaways_rewards"]
 
-ALL_PLATFORMS = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "other"]
+ALL_PLATFORMS = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "itchio", "other"]
 
 PLATFORM_LABELS = {
     "steam": "Steam",
@@ -70,7 +72,19 @@ PLATFORM_LABELS = {
     "ubisoft": "Ubisoft",
     "origin": "Origin / EA",
     "humble": "Humble Bundle",
+    "itchio": "itch.io",
     "other": "Other",
+}
+
+PLATFORM_ICONS = {
+    "steam":   "https://cdn.simpleicons.org/steam/white",
+    "epic":    "https://cdn.simpleicons.org/epicgames/white",
+    "gog":     "https://cdn.simpleicons.org/gogdotcom/white",
+    "ubisoft": "https://cdn.simpleicons.org/ubisoft/white",
+    "origin":  "https://cdn.simpleicons.org/ea/white",
+    "humble":  "https://cdn.simpleicons.org/humblebundle/white",
+    "itchio":  "https://cdn.simpleicons.org/itchdotio/white",
+    "other":   "https://cdn.simpleicons.org/gamepad/white",
 }
 
 
@@ -95,6 +109,7 @@ _PLATFORM_DOMAIN_MAP: list[tuple[str, str]] = [
     ("ea.com", "origin"),
     ("origin.com", "origin"),
     ("humblebundle.com", "humble"),
+    ("itch.io", "itchio"),
 ]
 
 
@@ -125,6 +140,11 @@ def build_game_embed(
     color = int(embed_color.lstrip("#"), 16) if embed_color else PLATFORM_COLORS.get(platform, 0x5865F2)
     embed = discord.Embed(title=title, url=url, color=color)
 
+    # Store icon in author area
+    icon = PLATFORM_ICONS.get(platform)
+    if icon:
+        embed.set_author(name=PLATFORM_LABELS.get(platform, platform.title()), icon_url=icon)
+
     # Sanitize N/A-like prices
     if original_price and original_price.upper() in ("N/A", "FREE", "UNKNOWN"):
         original_price = ""
@@ -154,16 +174,17 @@ def build_game_embed(
     if show_platform:
         embed.add_field(name="Platform", value=PLATFORM_LABELS.get(platform, platform.title()), inline=True)
 
-    # Links field with browser + client deep links
-    if show_client_link and url:
+    # Links field — browser link always shown; client deep links conditional
+    if url:
         link_parts = [f"[🌐 Open in Browser]({url})"]
-        client_url = store_url or url
-        steam_m = _STEAM_APP_RE.search(client_url)
-        epic_m = _EPIC_SLUG_RE.search(client_url)
-        if steam_m:
-            link_parts.append(f"[🎮 Open in Steam Client](steam://store/{steam_m.group(1)})")
-        elif epic_m:
-            link_parts.append(f"[🚀 Open in Epic Launcher](com.epicgames.launcher://store/product/{epic_m.group(1)})")
+        if show_client_link:
+            client_url = store_url or url
+            steam_m = _STEAM_APP_RE.search(client_url)
+            epic_m = _EPIC_SLUG_RE.search(client_url)
+            if steam_m:
+                link_parts.append(f"[🎮 Open in Steam Client](steam://store/{steam_m.group(1)})")
+            elif epic_m:
+                link_parts.append(f"[🚀 Open in Epic Launcher](com.epicgames.launcher://store/product/{epic_m.group(1)})")
         embed.add_field(name="Links", value=" • ".join(link_parts), inline=False)
 
     if show_image and image_url:
@@ -178,6 +199,7 @@ PLATFORM_EMOJIS = {
     "ubisoft": "\U0001f5a5",    # desktop
     "origin": "\U0001f3c3",     # runner
     "humble": "\U00002764",     # heart
+    "itchio": "\U0001f3b2",     # game die
     "other": "\U0001f4e6",      # package
 }
 
