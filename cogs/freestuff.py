@@ -576,7 +576,7 @@ class FreeStuff(commands.Cog):
         else:
             log.debug("Reddit: skipped -- no guilds have use_reddit enabled")
 
-        any_gg_deals = any(cfg.get("use_gg_deals", 1) for cfg in self._cache.values())
+        any_gg_deals = any(cfg.get("use_gg_deals", 0) for cfg in self._cache.values())
         if any_gg_deals:
             await self._enrich_steam_prices(new_games)
         else:
@@ -1079,7 +1079,7 @@ class FreeStuff(commands.Cog):
                     url=game_url,
                     platform=game["platform"],
                     image_url=game.get("image_url", ""),
-                    original_price=game.get("original_price", "") if cfg.get("use_gg_deals", 1) else "",
+                    original_price=game.get("original_price", "") if cfg.get("use_gg_deals", 0) else "",
                     end_date=game.get("end_date", ""),
                     category=game.get("category", "free_to_keep"),
                     embed_color=cfg.get("embed_color") or None,
