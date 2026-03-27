@@ -107,21 +107,36 @@
 
     <div class="form-group">
         <label>Source Settings</label>
-        <div class="toggle">
-            <input type="checkbox" name="use_epic_api" id="use_epic_api"
-                   {% if cfg.get('use_epic_api', 1) %}checked{% endif %}>
-            <label for="use_epic_api">Epic Games API
-                <small style="color:var(--text-muted);font-weight:400;display:block;margin-top:2px;">Disable if GamerPower already covers Epic giveaways to avoid duplicates</small>
-            </label>
+        <small style="color:var(--text-muted);display:block;margin-bottom:0.5rem;">Choose which sources to fetch free games from. Enable at least one.</small>
+
+        <div style="border:1px solid var(--border);border-radius:8px;padding:0.75rem;margin-bottom:0.5rem;">
+            <strong style="font-size:0.85rem;">New System (GamerPower + Epic API)</strong>
+            <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">Aggregates deals from GamerPower and Epic Games Store. Better metadata, descriptions, and price info.</small>
+            <div class="toggle">
+                <input type="checkbox" name="use_gamerpower" id="use_gamerpower"
+                       {% if cfg.get('use_gamerpower', 1) %}checked{% endif %}>
+                <label for="use_gamerpower">GamerPower API</label>
+            </div>
+            <div class="toggle" style="margin-top:0.35rem;">
+                <input type="checkbox" name="use_epic_api" id="use_epic_api"
+                       {% if cfg.get('use_epic_api', 1) %}checked{% endif %}>
+                <label for="use_epic_api">Epic Games API
+                    <small style="color:var(--text-muted);font-weight:400;display:block;margin-top:2px;">Disable if GamerPower already covers Epic giveaways to avoid duplicates</small>
+                </label>
+            </div>
         </div>
-        <div class="toggle" style="margin-top:0.5rem;">
-            <input type="checkbox" name="use_reddit" id="use_reddit"
-                   {% if cfg.get('use_reddit', 0) %}checked{% endif %}>
-            <label for="use_reddit">Reddit (r/FreeGameFindings)
-                <small style="color:var(--text-muted);font-weight:400;display:block;margin-top:2px;">Enable to also fetch free games from the FreeGameFindings subreddit</small>
-            </label>
+
+        <div style="border:1px solid var(--border);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">
+            <strong style="font-size:0.85rem;">Legacy System (Reddit)</strong>
+            <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">Fetches from r/FreeGameFindings. Community-curated, proven reliable.</small>
+            <div class="toggle">
+                <input type="checkbox" name="use_reddit" id="use_reddit"
+                       {% if cfg.get('use_reddit', 0) %}checked{% endif %}>
+                <label for="use_reddit">Reddit (r/FreeGameFindings)</label>
+            </div>
         </div>
-        <div style="margin-top:0.75rem;">
+
+        <div>
             <label for="link_type" style="font-size:0.85rem;">Game link destination</label>
             <select name="link_type" id="link_type" style="margin-top:0.25rem;">
                 <option value="store" {% if cfg.get('link_type', 'store') == 'store' %}selected{% endif %}>Direct store page (Steam, Epic, etc.)</option>

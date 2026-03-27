@@ -195,6 +195,7 @@ async def freestuff_save(guild_id: int):
         embed_show_image=1 if form.get("embed_show_image") else 0,
         embed_color=form.get("embed_color", "").strip() or None,
         use_epic_api=1 if form.get("use_epic_api") else 0,
+        use_gamerpower=1 if form.get("use_gamerpower") else 0,
         link_type=form.get("link_type", "store"),
         embed_show_client_link=1 if form.get("embed_show_client_link") else 0,
         embed_show_description=1 if form.get("embed_show_description") else 0,

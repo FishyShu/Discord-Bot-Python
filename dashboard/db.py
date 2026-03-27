@@ -392,6 +392,7 @@ async def init_db():
         for col, definition in [
             ("use_epic_api",           "INTEGER NOT NULL DEFAULT 1"),
             ("use_reddit",             "INTEGER NOT NULL DEFAULT 0"),
+            ("use_gamerpower",         "INTEGER NOT NULL DEFAULT 1"),
             ("link_type",              "TEXT NOT NULL DEFAULT 'store'"),
             ("embed_show_client_link", "INTEGER NOT NULL DEFAULT 1"),
             ("embed_show_description", "INTEGER NOT NULL DEFAULT 1"),

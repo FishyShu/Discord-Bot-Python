@@ -523,10 +523,20 @@ class FreeStuff(commands.Cog):
     async def _fetch_all(self) -> list[dict]:
         """Fetch from all sources, dedup, notify guilds. Returns list of new games."""
         new_games = []
-        new_games.extend(await self._fetch_epic())
-        new_games.extend(await self._fetch_gamerpower())
 
-        # Only hit Reddit if at least one guild has it enabled
+        # Only hit each source if at least one guild has it enabled
+        any_epic = any(cfg.get("use_epic_api", 1) for cfg in self._cache.values())
+        if any_epic:
+            new_games.extend(await self._fetch_epic())
+        else:
+            log.debug("Epic: skipped -- no guilds have use_epic_api enabled")
+
+        any_gamerpower = any(cfg.get("use_gamerpower", 1) for cfg in self._cache.values())
+        if any_gamerpower:
+            new_games.extend(await self._fetch_gamerpower())
+        else:
+            log.debug("GamerPower: skipped -- no guilds have use_gamerpower enabled")
+
         any_reddit = any(cfg.get("use_reddit") for cfg in self._cache.values())
         if any_reddit:
             new_games.extend(await self._fetch_reddit())
@@ -599,6 +609,8 @@ class FreeStuff(commands.Cog):
                 if game.get("category", "free_to_keep") not in guild_filters:
                     continue
                 if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
+                    continue
+                if not cfg.get("use_gamerpower", 1) and game.get("source") == "gamerpower":
                     continue
                 if not cfg.get("use_reddit", 0) and game.get("source") == "reddit":
                     continue
@@ -991,12 +1003,15 @@ class FreeStuff(commands.Cog):
                     log.debug("Notify: guild %s -- filtered %r (category %s)", guild_id, game["title"], game.get("category"))
                     filtered += 1
                     continue
-                # Epic API toggle: skip Epic API-sourced games if disabled
+                # Source toggles: skip games from disabled sources
                 if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
                     log.debug("Notify: guild %s -- filtered %r (epic API disabled)", guild_id, game["title"])
                     filtered += 1
                     continue
-                # Reddit toggle: skip Reddit-sourced games if disabled
+                if not cfg.get("use_gamerpower", 1) and game.get("source") == "gamerpower":
+                    log.debug("Notify: guild %s -- filtered %r (gamerpower disabled)", guild_id, game["title"])
+                    filtered += 1
+                    continue
                 if not cfg.get("use_reddit", 0) and game.get("source") == "reddit":
                     log.debug("Notify: guild %s -- filtered %r (reddit disabled)", guild_id, game["title"])
                     filtered += 1
