@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-LABEL version="1.8.1" \
+LABEL version="1.9.0" \
       description="Discord Bot — music, moderation, AI chatbot, and more"
 
 # Upgrade base packages first to patch known debian CVEs, then install deps.
