@@ -27,7 +27,7 @@ GG_DEALS_PRICES_URL = "https://api.gg.deals/v1/prices/by-steam-app-id/"
 GG_DEALS_API_KEY    = os.getenv("GG_DEALS_API_KEY", "")
 
 _STEAM_APP_RE = re.compile(r'store\.steampowered\.com/app/(\d+)', re.IGNORECASE)
-_EPIC_SLUG_RE = re.compile(r'store\.epicgames\.com/(?:[a-z]{2}(?:-[A-Z]{2})?/)?(?:p|product)/([^/?#]+)', re.IGNORECASE)
+_EPIC_PATH_RE = re.compile(r'store\.epicgames\.com/(?:[a-z]{2}(?:-[A-Z]{2})?/)?((?:p|product)/[^/?#]+)', re.IGNORECASE)
 
 REDDIT_PLATFORM_RE = re.compile(r"\[(Steam|Epic|GOG|Ubisoft|Origin|Humble|Epic Games|itch\.io)\]", re.IGNORECASE)
 _REDDIT_NOISE_LEADING = re.compile(r"^(\[[^\]]{1,30}\]\s*)+", re.IGNORECASE)
@@ -76,9 +76,11 @@ CATEGORY_LABELS = {
 CATEGORY_KEYWORDS = {
     "free_weekend":      ["free weekend", "free to play weekend", "[weekend]", "play for free this weekend"],
     "gamedev_assets":    ["asset", "game dev", "unity", "unreal", "blender", "template", "plugin", "tool for dev"],
-    "giveaways_rewards": ["giveaway", "key giveaway", "redeem", "reward code", "prime gaming", "humble choice"],
-    "dlc":               ["dlc", "expansion", "content pack"],
-    "loot":              ["in-game", "loot", "cosmetic", "skin"],
+    "giveaways_rewards": ["giveaway", "key giveaway", "redeem", "reward code", "prime gaming", "humble choice",
+                          "emblem code", "bonus code"],
+    "dlc":               ["dlc", "expansion", "content pack", "add-on", "addon", "bonus content"],
+    "loot":              ["in-game", "loot", "cosmetic", "skin", "emblem", "gift pack", "pack key",
+                          "item key", "unlock key"],
     "other_freebies":    [],
 }
 
@@ -217,15 +219,15 @@ def build_game_embed(
                 log.debug("Embed %r: Steam client link via %s", title, client_url)
                 steam_m = _STEAM_APP_RE.search(client_url)
                 if steam_m:
-                    link_parts.append(f"[🎮 Open in Steam Client](steam://store/{steam_m.group(1)})")
+                    link_parts.append(f"[🎮 Open in Steam Client](<steam://store/{steam_m.group(1)}>)")
                 else:
                     safe_url = client_url.replace("(", "%28").replace(")", "%29")
-                    link_parts.append(f"[🎮 Open in Steam Client](steam://openurl/{safe_url})")
+                    link_parts.append(f"[🎮 Open in Steam Client](<steam://openurl/{safe_url}>)")
             else:
-                epic_m = _EPIC_SLUG_RE.search(client_url)
+                epic_m = _EPIC_PATH_RE.search(client_url)
                 if epic_m:
-                    log.debug("Embed %r: Epic client link slug=%s", title, epic_m.group(1))
-                    link_parts.append(f"[🚀 Open in Epic Launcher](com.epicgames.launcher://store/product/{epic_m.group(1)})")
+                    log.debug("Embed %r: Epic client link path=%s", title, epic_m.group(1))
+                    link_parts.append(f"[🚀 Open in Epic Launcher](<com.epicgames.launcher://store/{epic_m.group(1)}>)")
                 else:
                     log.debug("Embed %r: no client link detected for %s", title, client_url)
         embed.add_field(name="Links", value=" • ".join(link_parts), inline=False)
