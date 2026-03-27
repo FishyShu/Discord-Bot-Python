@@ -244,6 +244,7 @@ async def freestuff_test(guild_id: int, category: str):
         description=ex["description"],
         show_description=bool(cfg.get("embed_show_description", 1)),
         show_client_link=bool(cfg.get("embed_show_client_link", 1)),
+        store_url=ex["url"],
     )
     embed.set_footer(text=f"{PLATFORM_LABELS.get(ex['platform'], ex['platform'].title())} • Free Games Bot (TEST)")
     embed.timestamp = datetime.now(timezone.utc)
@@ -261,10 +262,10 @@ async def freestuff_test(guild_id: int, category: str):
 @freestuff_bp.route("/<int:guild_id>/reset", methods=["POST"])
 @login_required
 async def freestuff_reset(guild_id: int):
-    deleted = await db.clear_free_games()
-    await db.set_setting("freestuff_force_announce", "1")
+    await db.upsert_freestuff_config(str(guild_id), pending_reset=1)
     bot = current_app.bot
     cog = bot.get_cog("FreeStuff") if bot else None
+    count = 0
     if cog:
-        cog._seeded = True  # next fetch will announce (DB is empty = all games are new)
-    return jsonify({"message": f"Cleared {deleted} cached game(s). All current freebies will be re-announced on the next fetch."})
+        count = await cog._handle_pending_resets()
+    return jsonify({"message": f"Re-announced {count} game(s) to this server."})

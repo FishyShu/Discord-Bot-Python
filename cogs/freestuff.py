@@ -56,7 +56,7 @@ CATEGORY_KEYWORDS = {
     "free_weekend":      ["free weekend", "free to play weekend", "[weekend]", "play for free this weekend"],
     "gamedev_assets":    ["asset", "game dev", "unity", "unreal", "blender", "template", "plugin", "tool for dev"],
     "giveaways_rewards": ["giveaway", "key giveaway", "redeem", "reward code", "prime gaming", "humble choice"],
-    "other_freebies":    ["dlc", "in-game", "cosmetic", "skin", "pack", "bundle", "item", "loot"],
+    "other_freebies":    ["dlc", "in-game", "cosmetic", "skin", "loot"],
 }
 
 ALL_CATEGORIES = ["free_to_keep", "free_weekend", "other_freebies", "gamedev_assets", "giveaways_rewards"]
@@ -74,14 +74,37 @@ PLATFORM_LABELS = {
 }
 
 
-def classify_item(title: str, flair: str | None, platform: str, is_free_weekend: bool) -> str:
+def classify_item(title: str, flair: str | None, platform: str, is_free_weekend: bool, *, gp_type: str | None = None) -> str:
     text = (title + " " + (flair or "")).lower()
     if is_free_weekend:
         return "free_weekend"
+    if gp_type and gp_type.upper() == "DLC":
+        return "other_freebies"
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw in text for kw in keywords):
             return category
     return "free_to_keep"
+
+
+_PLATFORM_DOMAIN_MAP: list[tuple[str, str]] = [
+    ("steampowered.com", "steam"),
+    ("epicgames.com", "epic"),
+    ("gog.com", "gog"),
+    ("ubisoft.com", "ubisoft"),
+    ("ubi.com", "ubisoft"),
+    ("ea.com", "origin"),
+    ("origin.com", "origin"),
+    ("humblebundle.com", "humble"),
+]
+
+
+def _detect_platform_from_url(url: str) -> str | None:
+    """Detect platform from URL domain. Returns None if no match."""
+    lower = url.lower()
+    for domain, plat in _PLATFORM_DOMAIN_MAP:
+        if domain in lower:
+            return plat
+    return None
 
 
 def build_game_embed(
@@ -97,9 +120,14 @@ def build_game_embed(
     description: str = "",
     show_description: bool = True,
     show_client_link: bool = True,
+    store_url: str = "",
 ) -> discord.Embed:
     color = int(embed_color.lstrip("#"), 16) if embed_color else PLATFORM_COLORS.get(platform, 0x5865F2)
     embed = discord.Embed(title=title, url=url, color=color)
+
+    # Sanitize N/A-like prices
+    if original_price and original_price.upper() in ("N/A", "FREE", "UNKNOWN"):
+        original_price = ""
 
     # Description block: game description, then price + expiry
     desc_lines = []
@@ -129,8 +157,9 @@ def build_game_embed(
     # Links field with browser + client deep links
     if show_client_link and url:
         link_parts = [f"[🌐 Open in Browser]({url})"]
-        steam_m = _STEAM_APP_RE.search(url)
-        epic_m = _EPIC_SLUG_RE.search(url)
+        client_url = store_url or url
+        steam_m = _STEAM_APP_RE.search(client_url)
+        epic_m = _EPIC_SLUG_RE.search(client_url)
         if steam_m:
             link_parts.append(f"[🎮 Open in Steam Client](steam://store/{steam_m.group(1)})")
         elif epic_m:
@@ -219,13 +248,7 @@ class FreeStuff(commands.Cog):
     async def cog_load(self):
         await self.refresh_cache()
         self._session = aiohttp.ClientSession()
-        # If reset was triggered (via dashboard or /freestuff reset), skip silent seeding
-        flag = await db.get_setting("freestuff_force_announce", "0")
-        if flag == "1":
-            self._seeded = True
-            await db.set_setting("freestuff_force_announce", "0")
-        else:
-            self._seeded = False
+        self._seeded = False
         self.check_loop.start()
 
     async def cog_unload(self):
@@ -341,11 +364,11 @@ class FreeStuff(commands.Cog):
             ephemeral=True,
         )
 
-    @freestuff_group.command(name="reset", description="Clear free game history so all current freebies are re-announced (testing)")
+    @freestuff_group.command(name="reset", description="Re-announce all current freebies to this server")
     async def freestuff_reset(self, interaction: discord.Interaction):
         view = _ResetConfirmView()
         await interaction.response.send_message(
-            "⚠️ This will delete all cached free game entries and re-announce every current freebie. Continue?",
+            "⚠️ This will re-announce every current freebie to this server. Continue?",
             view=view,
             ephemeral=True,
         )
@@ -353,15 +376,14 @@ class FreeStuff(commands.Cog):
         if not view.confirmed:
             await interaction.edit_original_response(content="Cancelled.", view=None)
             return
-        deleted = await db.clear_free_games()
-        self._seeded = True  # next _fetch_all will announce instead of silently seed
-        await db.set_setting("freestuff_force_announce", "1")
+        guild_id = str(interaction.guild_id)
+        await db.upsert_freestuff_config(guild_id, pending_reset=1)
         await interaction.edit_original_response(
-            content=f"Cleared **{deleted}** cached entries. Running fetch now...", view=None
+            content="Re-announcing all current freebies...", view=None
         )
-        new_games = await self._fetch_all()
+        count = await self._handle_pending_resets()
         await interaction.edit_original_response(
-            content=f"Cleared **{deleted}** cached entries. Re-announced **{len(new_games)}** game(s)."
+            content=f"Re-announced **{count}** game(s) to this server."
         )
 
     @freestuff_group.command(name="check", description="Manually check for free games now")
@@ -425,7 +447,96 @@ class FreeStuff(commands.Cog):
         if new_games:
             await self._notify_guilds(new_games)
 
+        await self._handle_pending_resets()
+
         return new_games
+
+    async def _handle_pending_resets(self) -> int:
+        """Re-announce all known games to guilds with pending_reset=1. Returns count sent."""
+        configs = await db.get_all_freestuff_configs()
+        pending = [c for c in configs if c.get("pending_reset")]
+        if not pending:
+            return 0
+
+        all_games = await db.get_free_games(limit=200)
+        if not all_games:
+            # Clear flags even if no games
+            for cfg in pending:
+                await db.upsert_freestuff_config(cfg["guild_id"], pending_reset=0)
+            return 0
+
+        # Convert DB rows to the dict format _notify_guilds expects
+        games = []
+        for g in all_games:
+            games.append({
+                "title": g["title"], "url": g["url"], "platform": g.get("platform", "other"),
+                "image_url": g.get("image_url", ""), "original_price": g.get("original_price", ""),
+                "end_date": (g.get("discovered_at", "") or "")[:10],
+                "category": g.get("category", "free_to_keep"),
+                "source": g.get("source", ""), "source_url": g.get("source_url", ""),
+                "description": g.get("description", ""),
+            })
+
+        count = 0
+        for cfg in pending:
+            guild = self.bot.get_guild(int(cfg["guild_id"]))
+            if not guild:
+                await db.upsert_freestuff_config(cfg["guild_id"], pending_reset=0)
+                continue
+            channel = guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
+            if not channel:
+                await db.upsert_freestuff_config(cfg["guild_id"], pending_reset=0)
+                continue
+
+            allowed_platforms = json.loads(cfg.get("platforms", "[]"))
+            guild_filters = json.loads(cfg.get("content_filters") or
+                '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
+
+            for game in games:
+                if allowed_platforms and game["platform"] not in allowed_platforms:
+                    continue
+                if game.get("category", "free_to_keep") not in guild_filters:
+                    continue
+                if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
+                    continue
+
+                link_type = cfg.get("link_type", "store")
+                game_url = game["url"]
+                if link_type == "gamerpower" and game.get("source_url"):
+                    game_url = game["source_url"]
+
+                mention_parts = []
+                if cfg.get("mention_role_id"):
+                    mention_parts.append(f"<@&{cfg['mention_role_id']}>")
+                platform_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
+                if game["platform"] in platform_roles:
+                    mention_parts.append(f"<@&{platform_roles[game['platform']]}>")
+                content = " ".join(mention_parts) or None
+
+                embed = build_game_embed(
+                    title=game["title"], url=game_url, platform=game["platform"],
+                    image_url=game.get("image_url", ""),
+                    original_price=game.get("original_price", ""),
+                    end_date=game.get("end_date", ""),
+                    category=game.get("category", "free_to_keep"),
+                    embed_color=cfg.get("embed_color") or None,
+                    show_price=bool(cfg.get("embed_show_price", 1)),
+                    show_category=bool(cfg.get("embed_show_category", 1)),
+                    show_platform=bool(cfg.get("embed_show_platform", 1)),
+                    show_expiry=bool(cfg.get("embed_show_expiry", 1)),
+                    show_image=bool(cfg.get("embed_show_image", 1)),
+                    description=game.get("description", ""),
+                    show_description=bool(cfg.get("embed_show_description", 1)),
+                    show_client_link=bool(cfg.get("embed_show_client_link", 1)),
+                    store_url=game.get("url", ""),
+                )
+                embed.timestamp = datetime.now(timezone.utc)
+                await self._send_with_ratelimit(channel, embed, content=content)
+                count += 1
+
+            await db.upsert_freestuff_config(cfg["guild_id"], pending_reset=0)
+
+        return count
 
     async def _fetch_epic(self) -> list[dict]:
         new_games = []
@@ -557,9 +668,16 @@ class FreeStuff(commands.Cog):
                 except Exception:
                     pass  # fall back to gamerpower URL
 
+                # Override platform based on actual redirect URL
+                url_platform = _detect_platform_from_url(url)
+                if url_platform:
+                    platform = url_platform
+
                 image_url = item.get("image") or item.get("thumbnail") or ""
                 original_price = item.get("worth") or ""
-                category = classify_item(title, platforms_str, platform, False)
+                if original_price.upper() in ("N/A", "FREE", "UNKNOWN"):
+                    original_price = ""
+                category = classify_item(title, platforms_str, platform, False, gp_type=item.get("type"))
                 description = (item.get("description") or "")[:300]
                 source_url = gp_url  # original gamerpower URL before redirect
 
@@ -690,6 +808,7 @@ class FreeStuff(commands.Cog):
                     description=game.get("description", ""),
                     show_description=bool(cfg.get("embed_show_description", 1)),
                     show_client_link=bool(cfg.get("embed_show_client_link", 1)),
+                    store_url=game.get("url", ""),
                 )
                 embed.timestamp = datetime.now(timezone.utc)
 

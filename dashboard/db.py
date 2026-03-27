@@ -416,6 +416,11 @@ async def init_db():
             await db.execute("ALTER TABLE soundboard_config ADD COLUMN fixed_volume REAL NOT NULL DEFAULT 0.8")
         except aiosqlite.OperationalError:
             pass
+        # Add pending_reset to freestuff_config for per-guild reset
+        try:
+            await db.execute("ALTER TABLE freestuff_config ADD COLUMN pending_reset INTEGER NOT NULL DEFAULT 0")
+        except aiosqlite.OperationalError:
+            pass
         await db.commit()
 
 
