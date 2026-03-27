@@ -167,6 +167,12 @@
                 <label for="embed_show_{{ field }}">{{ label }}</label>
             </div>
             {% endfor %}
+            <div class="toggle">
+                <input type="checkbox" name="embed_clean_titles" id="embed_clean_titles"
+                       {% if embed_settings.get('clean_titles', False) %}checked{% endif %}
+                       onchange="updatePreview()">
+                <label for="embed_clean_titles">✨ Clean titles</label>
+            </div>
         </div>
     </div>
 

@@ -33,6 +33,13 @@ REDDIT_PLATFORM_RE = re.compile(r"\[(Steam|Epic|GOG|Ubisoft|Origin|Humble|Epic G
 _REDDIT_NOISE_LEADING = re.compile(r"^(\[[^\]]{1,30}\]\s*)+", re.IGNORECASE)
 _REDDIT_NOISE_TRAILING = re.compile(r"[\(\[][^\)\]]{1,50}[\)\]]\s*$", re.IGNORECASE)
 
+_TITLE_NOISE_RE = re.compile(r"^\((?:game|dlc|loot|beta|early access)\)\s*", re.IGNORECASE)
+
+
+def _clean_title_noise(title: str) -> str:
+    """Strip common GamerPower prefixes like '(Game)', '(DLC)', etc."""
+    return _TITLE_NOISE_RE.sub("", title).strip() or title
+
 
 def _clean_reddit_title(raw: str) -> str:
     """Strip [Platform] [Type] tags and trailing (notes) from Reddit titles."""
@@ -114,17 +121,17 @@ PLATFORM_LABELS = {
 }
 
 PLATFORM_ICONS = {
-    "steam":       "https://img.icons8.com/color/48/steam.png",
-    "epic":        "https://img.icons8.com/color/48/epic-games.png",
-    "gog":         "https://img.icons8.com/fluency/48/gog-galaxy.png",
-    "ubisoft":     "https://img.icons8.com/color/48/ubisoft.png",
-    "origin":      "https://img.icons8.com/color/48/origin.png",
-    "humble":      "https://img.icons8.com/color/48/controller.png",
-    "itchio":      "https://img.icons8.com/color/48/controller.png",
-    "xbox":        "https://img.icons8.com/color/48/xbox.png",
-    "playstation": "https://img.icons8.com/color/48/play-station.png",
-    "nintendo":    "https://img.icons8.com/color/48/nintendo-switch.png",
-    "other":       "https://img.icons8.com/color/48/controller.png",
+    "steam":       "https://img.icons8.com/color/256/steam.png",
+    "epic":        "https://img.icons8.com/color/256/epic-games.png",
+    "gog":         "https://img.icons8.com/fluency/256/gog-galaxy.png",
+    "ubisoft":     "https://img.icons8.com/color/256/ubisoft.png",
+    "origin":      "https://img.icons8.com/color/256/origin.png",
+    "humble":      "https://img.icons8.com/color/256/controller.png",
+    "itchio":      "https://img.icons8.com/color/256/controller.png",
+    "xbox":        "https://img.icons8.com/color/256/xbox.png",
+    "playstation": "https://img.icons8.com/color/256/play-station.png",
+    "nintendo":    "https://img.icons8.com/color/256/nintendo-switch.png",
+    "other":       "https://img.icons8.com/color/256/controller.png",
 }
 
 
@@ -193,14 +200,18 @@ def build_game_embed(
     show_description: bool = True,
     show_client_link: bool = True,
     store_url: str = "",
+    clean_titles: bool = False,
 ) -> discord.Embed:
+    if clean_titles:
+        title = _clean_title_noise(title)
     color = int(embed_color.lstrip("#"), 16) if embed_color else PLATFORM_COLORS.get(platform, 0x5865F2)
     embed = discord.Embed(title=title, url=url, color=color)
 
-    # Store icon in author area
+    # Platform icon as thumbnail (large, top-right) instead of tiny author icon
     icon = PLATFORM_ICONS.get(platform)
     if icon:
-        embed.set_author(name=PLATFORM_LABELS.get(platform, platform.title()), icon_url=icon)
+        embed.set_author(name=PLATFORM_LABELS.get(platform, platform.title()))
+        embed.set_thumbnail(url=icon)
 
     # Sanitize N/A-like prices
     if original_price and original_price.upper() in ("N/A", "FREE", "UNKNOWN"):
@@ -231,23 +242,10 @@ def build_game_embed(
     if show_platform:
         embed.add_field(name="Platform", value=PLATFORM_LABELS.get(platform, platform.title()), inline=True)
 
-    # Links field -- browser link always shown; client deep links conditional
+    # Links field -- browser link only; steam:// and other custom protocols
+    # are not supported by Discord in embed markdown or button URLs.
     if url:
-        link_parts = [f"[🌐 Open in Browser]({url})"]
-        if show_client_link:
-            client_url = store_url or url
-            if "steampowered.com" in client_url.lower():
-                log.debug("Embed %r: Steam client link via %s", title, client_url)
-                steam_m = _STEAM_APP_RE.search(client_url)
-                if steam_m:
-                    link_parts.append(f"[🎮 Open in Steam Client](<steam://store/{steam_m.group(1)}>)")
-                else:
-                    safe_url = client_url.replace("(", "%28").replace(")", "%29")
-                    link_parts.append(f"[🎮 Open in Steam Client](<steam://openurl/{safe_url}>)")
-            # Epic launcher deep-links disabled — Discord doesn't render
-            # the com.epicgames.launcher:// protocol reliably.
-            # TODO: re-enable once a working approach is confirmed.
-        embed.add_field(name="Links", value=" • ".join(link_parts), inline=False)
+        embed.add_field(name="Links", value=f"[🌐 Open in Browser]({url})", inline=False)
 
     if show_image and image_url:
         embed.set_image(url=image_url)
@@ -664,6 +662,7 @@ class FreeStuff(commands.Cog):
                     show_description=bool(cfg.get("embed_show_description", 1)),
                     show_client_link=bool(cfg.get("embed_show_client_link", 1)),
                     store_url=game.get("url", ""),
+                    clean_titles=bool(cfg.get("embed_clean_titles", 0)),
                 )
                 embed.timestamp = datetime.now(timezone.utc)
                 await self._send_with_ratelimit(channel, embed, content=content)
@@ -1076,6 +1075,7 @@ class FreeStuff(commands.Cog):
                     show_description=bool(cfg.get("embed_show_description", 1)),
                     show_client_link=bool(cfg.get("embed_show_client_link", 1)),
                     store_url=game.get("url", ""),
+                    clean_titles=bool(cfg.get("embed_clean_titles", 0)),
                 )
                 embed.timestamp = datetime.now(timezone.utc)
 

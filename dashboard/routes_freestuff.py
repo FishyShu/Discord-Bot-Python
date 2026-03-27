@@ -127,6 +127,7 @@ async def freestuff_edit(guild_id: int):
         "show_image":       bool(cfg.get("embed_show_image", 1)),
         "show_description": bool(cfg.get("embed_show_description", 1)),
         "show_client_link": bool(cfg.get("embed_show_client_link", 1)),
+        "clean_titles":     bool(cfg.get("embed_clean_titles", 0)),
         "color":            cfg.get("embed_color") or "",
     }
 
@@ -200,6 +201,7 @@ async def freestuff_save(guild_id: int):
         link_type=form.get("link_type", "store"),
         embed_show_client_link=1 if form.get("embed_show_client_link") else 0,
         embed_show_description=1 if form.get("embed_show_description") else 0,
+        embed_clean_titles=1 if form.get("embed_clean_titles") else 0,
         use_reddit=1 if form.get("use_reddit") else 0,
     )
 
@@ -266,6 +268,7 @@ async def freestuff_test(guild_id: int, category: str):
         show_description=bool(cfg.get("embed_show_description", 1)),
         show_client_link=bool(cfg.get("embed_show_client_link", 1)),
         store_url=ex["url"],
+        clean_titles=bool(cfg.get("embed_clean_titles", 0)),
     )
     embed.set_footer(text=f"{PLATFORM_LABELS.get(ex['platform'], ex['platform'].title())} • Free Games Bot (TEST)")
     embed.timestamp = datetime.now(timezone.utc)
