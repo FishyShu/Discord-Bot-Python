@@ -680,10 +680,13 @@ class FreeStuff(commands.Cog):
                         break
 
                 # Follow redirects to get direct store URL
+                # GamerPower requires a browser User-Agent to honour redirects
                 url = gp_url
                 try:
-                    async with self._session.head(gp_url, allow_redirects=True,
-                                                  timeout=aiohttp.ClientTimeout(total=5)) as r:
+                    _hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                    async with self._session.get(gp_url, allow_redirects=True,
+                                                 headers=_hdrs,
+                                                 timeout=aiohttp.ClientTimeout(total=5)) as r:
                         if str(r.url) != gp_url:
                             url = str(r.url)
                 except Exception:
