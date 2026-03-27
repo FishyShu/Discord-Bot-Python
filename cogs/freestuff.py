@@ -682,7 +682,7 @@ class FreeStuff(commands.Cog):
                 # Follow redirects to get direct store URL
                 url = gp_url
                 try:
-                    async with self._session.head(gp_url, allow_redirects=True,
+                    async with self._session.get(gp_url, allow_redirects=True,
                                                   timeout=aiohttp.ClientTimeout(total=5)) as r:
                         if str(r.url) != gp_url:
                             url = str(r.url)
