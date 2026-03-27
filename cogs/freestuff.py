@@ -223,13 +223,9 @@ def build_game_embed(
                 else:
                     safe_url = client_url.replace("(", "%28").replace(")", "%29")
                     link_parts.append(f"[🎮 Open in Steam Client](<steam://openurl/{safe_url}>)")
-            else:
-                epic_m = _EPIC_PATH_RE.search(client_url)
-                if epic_m:
-                    log.debug("Embed %r: Epic client link path=%s", title, epic_m.group(1))
-                    link_parts.append(f"[🚀 Open in Epic Launcher](<com.epicgames.launcher://store/{epic_m.group(1)}>)")
-                else:
-                    log.debug("Embed %r: no client link detected for %s", title, client_url)
+            # Epic launcher deep-links disabled — Discord doesn't render
+            # the com.epicgames.launcher:// protocol reliably.
+            # TODO: re-enable once a working approach is confirmed.
         embed.add_field(name="Links", value=" • ".join(link_parts), inline=False)
 
     if show_image and image_url:
