@@ -22,11 +22,24 @@ if _log_level:
 
 EPIC_API            = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
 GAMERPOWER_API_URL  = "https://www.gamerpower.com/api/giveaways"
+REDDIT_URL          = "https://www.reddit.com/r/FreeGameFindings/new.json?limit=25"
 GG_DEALS_PRICES_URL = "https://api.gg.deals/v1/prices/by-steam-app-id/"
 GG_DEALS_API_KEY    = os.getenv("GG_DEALS_API_KEY", "")
 
 _STEAM_APP_RE = re.compile(r'store\.steampowered\.com/app/(\d+)', re.IGNORECASE)
 _EPIC_SLUG_RE = re.compile(r'store\.epicgames\.com/(?:en-US/)?p/([^/?#]+)', re.IGNORECASE)
+
+REDDIT_PLATFORM_RE = re.compile(r"\[(Steam|Epic|GOG|Ubisoft|Origin|Humble|Epic Games|itch\.io)\]", re.IGNORECASE)
+_REDDIT_NOISE_LEADING = re.compile(r"^(\[[^\]]{1,30}\]\s*)+", re.IGNORECASE)
+_REDDIT_NOISE_TRAILING = re.compile(r"[\(\[][^\)\]]{1,50}[\)\]]\s*$", re.IGNORECASE)
+
+
+def _clean_reddit_title(raw: str) -> str:
+    """Strip [Platform] [Type] tags and trailing (notes) from Reddit titles."""
+    title = raw.strip()
+    title = _REDDIT_NOISE_LEADING.sub("", title).strip()
+    title = _REDDIT_NOISE_TRAILING.sub("", title).strip()
+    return title or raw.strip()
 
 _GAMERPOWER_PLATFORM_MAP: dict[str, str] = {
     "epic games store": "epic",
@@ -347,8 +360,11 @@ class FreeStuff(commands.Cog):
         enabled = bool(cfg.get("enabled"))
 
         embed = discord.Embed(title="Free Stuff Config", color=0x43B581)
+        reddit_on = bool(cfg.get("use_reddit", 0))
+
         embed.add_field(name="Enabled", value="Yes" if enabled else "No", inline=True)
         embed.add_field(name="Channel", value=channel.mention if channel else "Not set", inline=True)
+        embed.add_field(name="Reddit Source", value="\u2705 On" if reddit_on else "\u274c Off", inline=True)
 
         platform_lines = []
         for p in ALL_PLATFORMS:
@@ -404,6 +420,26 @@ class FreeStuff(commands.Cog):
         await self.refresh_cache()
         await interaction.response.send_message(
             f"Removed mention role for **{PLATFORM_LABELS[platform]}**.",
+            ephemeral=True,
+        )
+
+    @freestuff_group.command(name="reddit", description="Toggle r/FreeGameFindings as an additional source")
+    async def freestuff_reddit(self, interaction: discord.Interaction):
+        guild_id = str(interaction.guild_id)
+        cfg = await db.get_freestuff_config(guild_id)
+        if not cfg:
+            await interaction.response.send_message(
+                "Free game notifications are not set up. Use `/freestuff setup <channel>` first.",
+                ephemeral=True,
+            )
+            return
+        current = bool(cfg.get("use_reddit", 0))
+        new_val = 0 if current else 1
+        await db.upsert_freestuff_config(guild_id, use_reddit=new_val)
+        await self.refresh_cache()
+        state = "enabled" if new_val else "disabled"
+        await interaction.response.send_message(
+            f"Reddit source (r/FreeGameFindings) **{state}**.",
             ephemeral=True,
         )
 
@@ -478,6 +514,14 @@ class FreeStuff(commands.Cog):
         new_games = []
         new_games.extend(await self._fetch_epic())
         new_games.extend(await self._fetch_gamerpower())
+
+        # Only hit Reddit if at least one guild has it enabled
+        any_reddit = any(cfg.get("use_reddit") for cfg in self._cache.values())
+        if any_reddit:
+            new_games.extend(await self._fetch_reddit())
+        else:
+            log.debug("Reddit: skipped -- no guilds have use_reddit enabled")
+
         await self._enrich_steam_prices(new_games)
 
         if not self._seeded:
@@ -541,6 +585,8 @@ class FreeStuff(commands.Cog):
                 if game.get("category", "free_to_keep") not in guild_filters:
                     continue
                 if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
+                    continue
+                if not cfg.get("use_reddit", 0) and game.get("source") == "reddit":
                     continue
 
                 link_type = cfg.get("link_type", "store")
@@ -771,6 +817,71 @@ class FreeStuff(commands.Cog):
         log.debug("GamerPower: fetch complete -- %d new game(s)", len(new_games))
         return new_games
 
+    async def _fetch_reddit(self) -> list[dict]:
+        """Fetch free game posts from r/FreeGameFindings."""
+        new_games = []
+        try:
+            headers = {"User-Agent": "DiscordBot/1.0"}
+            async with self._session.get(REDDIT_URL, headers=headers,
+                                         timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                log.debug("Reddit API response status: %d", resp.status)
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+
+            posts = data.get("data", {}).get("children", [])
+            log.debug("Reddit: %d posts returned", len(posts))
+            for post in posts:
+                pdata = post.get("data", {})
+                raw_title = pdata.get("title", "")
+                title = _clean_reddit_title(raw_title)
+                url = pdata.get("url", "")
+                if not url or pdata.get("is_self"):
+                    log.debug("Reddit: skipping %r -- self-post or no URL", title)
+                    continue
+
+                # Parse platform from title tags
+                m = REDDIT_PLATFORM_RE.search(raw_title)
+                platform = m.group(1).lower() if m else "other"
+                if platform == "epic games":
+                    platform = "epic"
+                elif platform == "itch.io":
+                    platform = "itchio"
+
+                # Override platform from the actual URL
+                url_platform = _detect_platform_from_url(url)
+                if url_platform:
+                    log.debug("Reddit: %r -- platform override %s -> %s (from URL)", title, platform, url_platform)
+                    platform = url_platform
+
+                richtext = pdata.get("link_flair_richtext") or []
+                flair = pdata.get("link_flair_text") or (richtext[0].get("t", "") if richtext else "")
+                category = classify_item(title, flair, platform, False)
+                image_url = pdata.get("thumbnail", "")
+                if not image_url.startswith("http"):
+                    image_url = ""
+
+                log.debug("Reddit: %r -- platform=%s, category=%s, flair=%s",
+                          title, platform, category, flair.encode("ascii", "replace").decode())
+                game_id = await db.add_free_game(
+                    title=title, url=url, platform=platform,
+                    source="reddit", category=category,
+                )
+                if game_id:
+                    log.debug("Reddit: NEW game added -- %r (id=%s)", title, game_id)
+                    new_games.append({
+                        "title": title, "url": url, "platform": platform,
+                        "image_url": image_url, "original_price": "",
+                        "end_date": "", "category": category,
+                        "source": "reddit", "source_url": "", "description": "",
+                    })
+                else:
+                    log.debug("Reddit: already known -- %r", title)
+        except Exception:
+            log.exception("Error fetching Reddit free games")
+        log.debug("Reddit: fetch complete -- %d new game(s)", len(new_games))
+        return new_games
+
     async def _enrich_steam_prices(self, games: list[dict]) -> None:
         """Fill original_price from GG.deals Prices API for Steam games with a Steam App ID."""
         if not GG_DEALS_API_KEY:
@@ -868,6 +979,11 @@ class FreeStuff(commands.Cog):
                 # Epic API toggle: skip Epic API-sourced games if disabled
                 if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
                     log.debug("Notify: guild %s -- filtered %r (epic API disabled)", guild_id, game["title"])
+                    filtered += 1
+                    continue
+                # Reddit toggle: skip Reddit-sourced games if disabled
+                if not cfg.get("use_reddit", 0) and game.get("source") == "reddit":
+                    log.debug("Notify: guild %s -- filtered %r (reddit disabled)", guild_id, game["title"])
                     filtered += 1
                     continue
 

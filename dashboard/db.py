@@ -390,6 +390,7 @@ async def init_db():
         # Add new feature columns to freestuff_config
         for col, definition in [
             ("use_epic_api",           "INTEGER NOT NULL DEFAULT 1"),
+            ("use_reddit",             "INTEGER NOT NULL DEFAULT 0"),
             ("link_type",              "TEXT NOT NULL DEFAULT 'store'"),
             ("embed_show_client_link", "INTEGER NOT NULL DEFAULT 1"),
             ("embed_show_description", "INTEGER NOT NULL DEFAULT 1"),
