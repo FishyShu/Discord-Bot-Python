@@ -114,17 +114,17 @@ PLATFORM_LABELS = {
 }
 
 PLATFORM_ICONS = {
-    "steam":   "https://cdn.simpleicons.org/steam/white",
-    "epic":    "https://cdn.simpleicons.org/epicgames/white",
-    "gog":     "https://cdn.simpleicons.org/gogdotcom/white",
-    "ubisoft": "https://cdn.simpleicons.org/ubisoft/white",
-    "origin":  "https://cdn.simpleicons.org/ea/white",
-    "humble":  "https://cdn.simpleicons.org/humblebundle/white",
-    "itchio":  "https://cdn.simpleicons.org/itchdotio/white",
-    "xbox":    "https://cdn.simpleicons.org/xbox/white",
-    "playstation": "https://cdn.simpleicons.org/playstation/white",
-    "nintendo": "https://cdn.simpleicons.org/nintendo/white",
-    "other":   "https://cdn.simpleicons.org/gamepad/white",
+    "steam":       "https://img.icons8.com/color/48/steam.png",
+    "epic":        "https://img.icons8.com/color/48/epic-games.png",
+    "gog":         "https://img.icons8.com/fluency/48/gog-galaxy.png",
+    "ubisoft":     "https://img.icons8.com/color/48/ubisoft.png",
+    "origin":      "https://img.icons8.com/color/48/origin.png",
+    "humble":      "https://img.icons8.com/color/48/controller.png",
+    "itchio":      "https://img.icons8.com/color/48/controller.png",
+    "xbox":        "https://img.icons8.com/color/48/xbox.png",
+    "playstation": "https://img.icons8.com/color/48/play-station.png",
+    "nintendo":    "https://img.icons8.com/color/48/nintendo-switch.png",
+    "other":       "https://img.icons8.com/color/48/controller.png",
 }
 
 
