@@ -29,9 +29,24 @@ GG_DEALS_API_KEY    = os.getenv("GG_DEALS_API_KEY", "")
 _STEAM_APP_RE = re.compile(r'store\.steampowered\.com/app/(\d+)', re.IGNORECASE)
 _EPIC_PATH_RE = re.compile(r'store\.epicgames\.com/(?:[a-z]{2}(?:-[A-Z]{2})?/)?((?:p|product)/[^/?#]+)', re.IGNORECASE)
 
-REDDIT_PLATFORM_RE = re.compile(r"\[(Steam|Epic|GOG|Ubisoft|Origin|Humble|Epic Games|itch\.io|Xbox|PlayStation|PS4|PS5|PSN|Nintendo|Switch)\]", re.IGNORECASE)
+_REDDIT_BRACKET_RE = re.compile(r"\[([^\]]+)\]")
 _REDDIT_NOISE_LEADING = re.compile(r"^(\[[^\]]{1,30}\]\s*)+", re.IGNORECASE)
 _REDDIT_NOISE_TRAILING = re.compile(r"[\(\[][^\)\]]{1,50}[\)\]]\s*$", re.IGNORECASE)
+
+_REDDIT_PLATFORM_ALIASES: dict[str, str] = {
+    "steam": "steam", "egs": "epic", "epic": "epic", "epic games": "epic",
+    "epic games store": "epic", "gog": "gog", "ubisoft": "ubisoft",
+    "origin": "origin", "ea": "origin", "humble": "humble",
+    "humble bundle": "humble", "itch.io": "itchio", "itchio": "itchio",
+    "xbox": "xbox", "xbox one": "xbox", "xbox series x|s": "xbox",
+    "xbox series x": "xbox", "xbox series": "xbox",
+    "playstation": "playstation", "ps4": "playstation",
+    "ps5": "playstation", "psn": "playstation",
+    "nintendo": "nintendo", "switch": "nintendo",
+    "battle.net": "other", "blizzard": "other",
+    "drm-free": "other", "drm free": "other",
+    "multiple stores": "other",
+}
 
 _TITLE_NOISE_RE = re.compile(r"^\((?:game|dlc|loot|beta|early access)\)\s*", re.IGNORECASE)
 
@@ -775,7 +790,7 @@ class FreeStuff(commands.Cog):
 
             log.debug("GamerPower: %d items returned", len(items))
             for item in items:
-                title = (item.get("title") or "").strip()
+                title = _clean_title_noise((item.get("title") or "").strip())
                 gp_url = item.get("open_giveaway_url") or ""
                 if not title or not gp_url:
                     log.debug("GamerPower: skipping item -- missing title or URL")
@@ -881,25 +896,23 @@ class FreeStuff(commands.Cog):
             for post in posts:
                 pdata = post.get("data", {})
                 raw_title = pdata.get("title", "")
-                title = _clean_reddit_title(raw_title)
+                title = _clean_title_noise(_clean_reddit_title(raw_title))
                 url = pdata.get("url", "")
                 if not url or pdata.get("is_self"):
                     log.debug("Reddit: skipping %r -- self-post or no URL", title)
                     continue
 
-                # Parse platform from title tags
-                m = REDDIT_PLATFORM_RE.search(raw_title)
-                platform = m.group(1).lower() if m else "other"
-                if platform == "epic games":
-                    platform = "epic"
-                elif platform == "itch.io":
-                    platform = "itchio"
-                elif platform in ("ps4", "ps5", "psn", "playstation"):
-                    platform = "playstation"
-                elif platform in ("xbox",):
-                    platform = "xbox"
-                elif platform in ("switch", "nintendo"):
-                    platform = "nintendo"
+                # Parse platform from bracket tags in title
+                brackets = _REDDIT_BRACKET_RE.findall(raw_title)
+                platform = "other"
+                for bracket in brackets:
+                    for token in re.split(r"[/,]", bracket):
+                        mapped = _REDDIT_PLATFORM_ALIASES.get(token.strip().lower())
+                        if mapped:
+                            platform = mapped
+                            break
+                    if platform != "other":
+                        break
 
                 # Override platform from the actual URL
                 url_platform = _detect_platform_from_url(url)
