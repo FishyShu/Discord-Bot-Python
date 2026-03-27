@@ -83,7 +83,9 @@
         {% set category_meta = [
             ('free_to_keep',      '🎁 Free to Keep',        'Games you can claim and keep forever (e.g. Epic weekly free games)'),
             ('free_weekend',      '⏳ Free Weekend',         'Temporarily free to play for a limited weekend window'),
-            ('other_freebies',    '🎮 Other Freebies',       'DLC, cosmetics, in-game items and content packs'),
+            ('dlc',               '📦 DLC',                  'Downloadable content, expansions, and content packs'),
+            ('loot',              '🎁 In-Game Loot',         'Cosmetics, skins, and in-game items'),
+            ('other_freebies',    '🎮 Other Freebies',       'Miscellaneous free content that doesn\'t fit other categories'),
             ('gamedev_assets',    '🛠️ Game Dev Assets',      'Unity/Unreal assets, tools and templates for developers'),
             ('giveaways_rewards', '🎟️ Giveaways & Rewards',  'Key giveaways, Prime Gaming drops, redemption codes'),
         ] %}
@@ -110,6 +112,13 @@
                    {% if cfg.get('use_epic_api', 1) %}checked{% endif %}>
             <label for="use_epic_api">Epic Games API
                 <small style="color:var(--text-muted);font-weight:400;display:block;margin-top:2px;">Disable if GamerPower already covers Epic giveaways to avoid duplicates</small>
+            </label>
+        </div>
+        <div class="toggle" style="margin-top:0.5rem;">
+            <input type="checkbox" name="use_reddit" id="use_reddit"
+                   {% if cfg.get('use_reddit', 0) %}checked{% endif %}>
+            <label for="use_reddit">Reddit (r/FreeGameFindings)
+                <small style="color:var(--text-muted);font-weight:400;display:block;margin-top:2px;">Enable to also fetch free games from the FreeGameFindings subreddit</small>
             </label>
         </div>
         <div style="margin-top:0.75rem;">
@@ -160,6 +169,8 @@
     <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
         <button class="btn btn-secondary" onclick="sendTest('free_to_keep')">🎁 Free to Keep</button>
         <button class="btn btn-secondary" onclick="sendTest('free_weekend')">⏳ Free Weekend</button>
+        <button class="btn btn-secondary" onclick="sendTest('dlc')">📦 DLC</button>
+        <button class="btn btn-secondary" onclick="sendTest('loot')">🎁 In-Game Loot</button>
         <button class="btn btn-secondary" onclick="sendTest('other_freebies')">🎮 Other Freebies</button>
         <button class="btn btn-secondary" onclick="sendTest('gamedev_assets')">🛠️ Game Dev Asset</button>
         <button class="btn btn-secondary" onclick="sendTest('giveaways_rewards')">🎟️ Giveaway / Reward</button>
@@ -196,6 +207,8 @@
                 {% set category_labels = {
                     'free_to_keep': '🎁 Free to Keep',
                     'free_weekend': '⏳ Free Weekend',
+                    'dlc': '📦 DLC',
+                    'loot': '🎁 In-Game Loot',
                     'other_freebies': '🎮 Freebie',
                     'gamedev_assets': '🛠️ Game Dev Asset',
                     'giveaways_rewards': '🎟️ Giveaway'
@@ -271,6 +284,8 @@ const PLATFORM_LABELS = {
 const CATEGORY_LABELS = {
     free_to_keep: '🎁 Free to Keep',
     free_weekend: '⏳ Free Weekend',
+    dlc: '📦 DLC',
+    loot: '🎁 In-Game Loot',
     other_freebies: '🎮 Other Freebies',
     gamedev_assets: '🛠️ Game Dev Asset',
     giveaways_rewards: '🎟️ Giveaway / Reward'

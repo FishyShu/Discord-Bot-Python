@@ -27,7 +27,7 @@ GG_DEALS_PRICES_URL = "https://api.gg.deals/v1/prices/by-steam-app-id/"
 GG_DEALS_API_KEY    = os.getenv("GG_DEALS_API_KEY", "")
 
 _STEAM_APP_RE = re.compile(r'store\.steampowered\.com/app/(\d+)', re.IGNORECASE)
-_EPIC_SLUG_RE = re.compile(r'store\.epicgames\.com/(?:en-US/)?p/([^/?#]+)', re.IGNORECASE)
+_EPIC_SLUG_RE = re.compile(r'store\.epicgames\.com/(?:[a-z]{2}(?:-[A-Z]{2})?/)?(?:p|product)/([^/?#]+)', re.IGNORECASE)
 
 REDDIT_PLATFORM_RE = re.compile(r"\[(Steam|Epic|GOG|Ubisoft|Origin|Humble|Epic Games|itch\.io)\]", re.IGNORECASE)
 _REDDIT_NOISE_LEADING = re.compile(r"^(\[[^\]]{1,30}\]\s*)+", re.IGNORECASE)
@@ -66,6 +66,8 @@ PLATFORM_COLORS = {
 CATEGORY_LABELS = {
     "free_to_keep":      "🎁 Free to Keep",
     "free_weekend":      "⏳ Free Weekend",
+    "dlc":               "📦 DLC",
+    "loot":              "🎁 In-Game Loot",
     "other_freebies":    "🎮 Freebie",
     "gamedev_assets":    "🛠️ Game Dev Asset",
     "giveaways_rewards": "🎟️ Giveaway / Reward",
@@ -75,10 +77,12 @@ CATEGORY_KEYWORDS = {
     "free_weekend":      ["free weekend", "free to play weekend", "[weekend]", "play for free this weekend"],
     "gamedev_assets":    ["asset", "game dev", "unity", "unreal", "blender", "template", "plugin", "tool for dev"],
     "giveaways_rewards": ["giveaway", "key giveaway", "redeem", "reward code", "prime gaming", "humble choice"],
-    "other_freebies":    ["dlc", "in-game", "cosmetic", "skin", "loot"],
+    "dlc":               ["dlc", "expansion", "content pack"],
+    "loot":              ["in-game", "loot", "cosmetic", "skin"],
+    "other_freebies":    [],
 }
 
-ALL_CATEGORIES = ["free_to_keep", "free_weekend", "other_freebies", "gamedev_assets", "giveaways_rewards"]
+ALL_CATEGORIES = ["free_to_keep", "free_weekend", "dlc", "loot", "other_freebies", "gamedev_assets", "giveaways_rewards"]
 
 ALL_PLATFORMS = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "itchio", "other"]
 
@@ -107,10 +111,10 @@ PLATFORM_ICONS = {
 
 _GP_TYPE_TO_CATEGORY: dict[str, str] = {
     "game":          "free_to_keep",
-    "loot":          "other_freebies",
+    "loot":          "loot",
     "beta":          "giveaways_rewards",
     "early access":  "giveaways_rewards",
-    "dlc":           "other_freebies",
+    "dlc":           "dlc",
 }
 
 
@@ -211,7 +215,12 @@ def build_game_embed(
             client_url = store_url or url
             if "steampowered.com" in client_url.lower():
                 log.debug("Embed %r: Steam client link via %s", title, client_url)
-                link_parts.append(f"[🎮 Open in Steam Client](steam://openurl/{client_url})")
+                steam_m = _STEAM_APP_RE.search(client_url)
+                if steam_m:
+                    link_parts.append(f"[🎮 Open in Steam Client](steam://store/{steam_m.group(1)})")
+                else:
+                    safe_url = client_url.replace("(", "%28").replace(")", "%29")
+                    link_parts.append(f"[🎮 Open in Steam Client](steam://openurl/{safe_url})")
             else:
                 epic_m = _EPIC_SLUG_RE.search(client_url)
                 if epic_m:

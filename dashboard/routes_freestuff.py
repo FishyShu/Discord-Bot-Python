@@ -11,7 +11,7 @@ from . import db
 
 freestuff_bp = Blueprint("freestuff", __name__)
 
-ALL_CATEGORIES = ["free_to_keep", "free_weekend", "other_freebies", "gamedev_assets", "giveaways_rewards"]
+ALL_CATEGORIES = ["free_to_keep", "free_weekend", "dlc", "loot", "other_freebies", "gamedev_assets", "giveaways_rewards"]
 ALL_PLATFORMS  = ["steam", "epic", "gog", "ubisoft", "origin", "humble", "itchio", "other"]
 
 PLATFORM_LABELS = {
@@ -38,6 +38,24 @@ _CATEGORY_EXAMPLES = {
         "image_url": "",
         "end_date": "2026-03-25",
         "category": "free_weekend",
+    },
+    "dlc": {
+        "title": "DAVE THE DIVER — Godzilla Content Pack",
+        "platform": "steam",
+        "original_price": "$4.99",
+        "url": "https://store.steampowered.com/app/2841140/",
+        "image_url": "",
+        "end_date": "",
+        "category": "dlc",
+    },
+    "loot": {
+        "title": "Destiny 2 — Exotic Weapon Skin Bundle",
+        "platform": "steam",
+        "original_price": "$2.99",
+        "url": "https://store.steampowered.com/app/1085660/",
+        "image_url": "",
+        "end_date": "",
+        "category": "loot",
     },
     "other_freebies": {
         "title": "Exclusive DLC Pack — Tomb Raider",
@@ -96,7 +114,7 @@ async def freestuff_edit(guild_id: int):
 
     platforms = json.loads(cfg.get("platforms", "[]")) if cfg else []
     content_filters = json.loads(cfg.get("content_filters") or
-        '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
+        '["free_to_keep","free_weekend","dlc","loot","other_freebies","gamedev_assets","giveaways_rewards"]')
 
     roles = sorted(guild.roles, key=lambda r: r.position, reverse=True)
 
@@ -180,6 +198,7 @@ async def freestuff_save(guild_id: int):
         link_type=form.get("link_type", "store"),
         embed_show_client_link=1 if form.get("embed_show_client_link") else 0,
         embed_show_description=1 if form.get("embed_show_description") else 0,
+        use_reddit=1 if form.get("use_reddit") else 0,
     )
 
     cog = bot.get_cog("FreeStuff")
