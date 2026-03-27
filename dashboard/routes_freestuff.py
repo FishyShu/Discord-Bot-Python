@@ -203,6 +203,7 @@ async def freestuff_save(guild_id: int):
         embed_show_description=1 if form.get("embed_show_description") else 0,
         embed_clean_titles=1 if form.get("embed_clean_titles") else 0,
         use_reddit=1 if form.get("use_reddit") else 0,
+        use_gg_deals=1 if form.get("use_gg_deals") else 0,
     )
 
     cog = bot.get_cog("FreeStuff")

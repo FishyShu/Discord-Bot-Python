@@ -124,6 +124,13 @@
                     <small style="color:var(--text-muted);font-weight:400;display:block;margin-top:2px;">Disable if GamerPower already covers Epic giveaways to avoid duplicates</small>
                 </label>
             </div>
+            <div class="toggle" style="margin-top:0.35rem;">
+                <input type="checkbox" name="use_gg_deals" id="use_gg_deals"
+                       {% if cfg.get('use_gg_deals', 1) %}checked{% endif %}>
+                <label for="use_gg_deals">GG.deals Price Enrichment
+                    <small style="color:var(--text-muted);font-weight:400;display:block;margin-top:2px;">Shows original price (e.g. ~~$19.99~~ → FREE) on Steam game embeds</small>
+                </label>
+            </div>
         </div>
 
         <div style="border:1px solid var(--border);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">

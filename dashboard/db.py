@@ -397,6 +397,7 @@ async def init_db():
             ("embed_show_client_link", "INTEGER NOT NULL DEFAULT 1"),
             ("embed_show_description", "INTEGER NOT NULL DEFAULT 1"),
             ("embed_clean_titles",     "INTEGER NOT NULL DEFAULT 0"),
+            ("use_gg_deals",           "INTEGER NOT NULL DEFAULT 1"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE freestuff_config ADD COLUMN {col} {definition}")

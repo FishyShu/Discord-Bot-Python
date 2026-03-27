@@ -576,7 +576,11 @@ class FreeStuff(commands.Cog):
         else:
             log.debug("Reddit: skipped -- no guilds have use_reddit enabled")
 
-        await self._enrich_steam_prices(new_games)
+        any_gg_deals = any(cfg.get("use_gg_deals", 1) for cfg in self._cache.values())
+        if any_gg_deals:
+            await self._enrich_steam_prices(new_games)
+        else:
+            log.debug("GG.deals: skipped -- no guilds have use_gg_deals enabled")
 
         if not self._seeded:
             # First run after startup: silently seed the DB so existing freebies
@@ -1075,7 +1079,7 @@ class FreeStuff(commands.Cog):
                     url=game_url,
                     platform=game["platform"],
                     image_url=game.get("image_url", ""),
-                    original_price=game.get("original_price", ""),
+                    original_price=game.get("original_price", "") if cfg.get("use_gg_deals", 1) else "",
                     end_date=game.get("end_date", ""),
                     category=game.get("category", "free_to_keep"),
                     embed_color=cfg.get("embed_color") or None,
