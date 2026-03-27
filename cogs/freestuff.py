@@ -173,7 +173,7 @@ def build_game_embed(
         desc_lines.append(truncated)
         desc_lines.append("")  # blank line separator
     if show_price:
-        price_str = f"~~{original_price}~~ → **FREE**" if original_price else "**FREE**"
+        price_str = f"~~{original_price}~~ -> **FREE**" if original_price else "**FREE**"
         desc_lines.append(price_str)
     if show_expiry and end_date:
         try:
@@ -191,7 +191,7 @@ def build_game_embed(
     if show_platform:
         embed.add_field(name="Platform", value=PLATFORM_LABELS.get(platform, platform.title()), inline=True)
 
-    # Links field — browser link always shown; client deep links conditional
+    # Links field -- browser link always shown; client deep links conditional
     if url:
         link_parts = [f"[🌐 Open in Browser]({url})"]
         if show_client_link:
@@ -484,7 +484,7 @@ class FreeStuff(commands.Cog):
             # First run after startup: silently seed the DB so existing freebies
             # are not treated as new. No notifications sent.
             self._seeded = True
-            log.info("FreeStuff: seeded %d game(s) on startup — no notifications sent.", len(new_games))
+            log.info("FreeStuff: seeded %d game(s) on startup -- no notifications sent.", len(new_games))
             return []
 
         if new_games:
@@ -596,7 +596,7 @@ class FreeStuff(commands.Cog):
                 title = elem.get("title", "")
                 offers = elem.get("promotions")
                 if not offers:
-                    log.debug("Epic: skipping %r — no promotions", title)
+                    log.debug("Epic: skipping %r -- no promotions", title)
                     continue
 
                 promo_list = offers.get("promotionalOffers", [])
@@ -604,7 +604,7 @@ class FreeStuff(commands.Cog):
                     for offer in promo_group.get("promotionalOffers", []):
                         discount_pct = offer.get("discountSetting", {}).get("discountPercentage", 0)
                         if discount_pct != 0:
-                            log.debug("Epic: skipping %r — discount %d%% (not free)", title, discount_pct)
+                            log.debug("Epic: skipping %r -- discount %d%% (not free)", title, discount_pct)
                             continue
 
                         start_date_str = offer.get("startDate", "")
@@ -612,8 +612,8 @@ class FreeStuff(commands.Cog):
                             try:
                                 start_dt = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
                                 if start_dt > datetime.now(timezone.utc):
-                                    log.debug("Epic: skipping %r — not live yet (starts %s)", title, start_date_str)
-                                    continue  # offer not live yet — skip to avoid blocking future send
+                                    log.debug("Epic: skipping %r -- not live yet (starts %s)", title, start_date_str)
+                                    continue  # offer not live yet -- skip to avoid blocking future send
                             except ValueError:
                                 pass
 
@@ -622,7 +622,7 @@ class FreeStuff(commands.Cog):
                         url = f"https://store.epicgames.com/p/{page_slug}" if page_slug else ""
                         if not url:
                             url = f"https://store.epicgames.com/browse?q={title.replace(' ', '+')}"
-                        log.debug("Epic: %r → URL %s (slug=%r)", title, url, page_slug)
+                        log.debug("Epic: %r -> URL %s (slug=%r)", title, url, page_slug)
 
                         image_url = ""
                         for img in elem.get("keyImages", []):
@@ -640,7 +640,7 @@ class FreeStuff(commands.Cog):
                             try:
                                 end_dt = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
                                 if end_dt < datetime.now(timezone.utc):
-                                    log.debug("Epic: skipping %r — already expired (%s)", title, end_date_str)
+                                    log.debug("Epic: skipping %r -- already expired (%s)", title, end_date_str)
                                     continue  # already expired
                                 delta = end_dt - datetime.now(timezone.utc)
                                 is_free_weekend = 0 < delta.days <= 4
@@ -650,14 +650,14 @@ class FreeStuff(commands.Cog):
                         category = classify_item(title, None, "epic", is_free_weekend)
                         end_date_display = end_date_str[:10] if end_date_str else ""
 
-                        log.debug("Epic: %r — category=%s, end=%s, free_weekend=%s", title, category, end_date_display, is_free_weekend)
+                        log.debug("Epic: %r -- category=%s, end=%s, free_weekend=%s", title, category, end_date_display, is_free_weekend)
                         game_id = await db.add_free_game(
                             title=title, url=url, platform="epic",
                             image_url=image_url, original_price=original, source="epic",
                             category=category,
                         )
                         if game_id:
-                            log.debug("Epic: NEW game added — %r (id=%s)", title, game_id)
+                            log.debug("Epic: NEW game added -- %r (id=%s)", title, game_id)
                             new_games.append({
                                 "title": title, "url": url, "platform": "epic",
                                 "image_url": image_url, "original_price": original,
@@ -665,10 +665,10 @@ class FreeStuff(commands.Cog):
                                 "source": "epic", "source_url": "", "description": "",
                             })
                         else:
-                            log.debug("Epic: already known — %r", title)
+                            log.debug("Epic: already known -- %r", title)
         except Exception:
             log.exception("Error fetching Epic free games")
-        log.debug("Epic: fetch complete — %d new game(s)", len(new_games))
+        log.debug("Epic: fetch complete -- %d new game(s)", len(new_games))
         return new_games
 
     async def _fetch_gamerpower(self) -> list[dict]:
@@ -687,7 +687,7 @@ class FreeStuff(commands.Cog):
                 title = (item.get("title") or "").strip()
                 gp_url = item.get("open_giveaway_url") or ""
                 if not title or not gp_url:
-                    log.debug("GamerPower: skipping item — missing title or URL")
+                    log.debug("GamerPower: skipping item -- missing title or URL")
                     continue
                 log.debug("GamerPower: processing %r (gp_url=%s)", title, gp_url)
 
@@ -695,7 +695,7 @@ class FreeStuff(commands.Cog):
                 platforms_str = (item.get("platforms") or "").lower()
                 pc_stores = ("pc", "steam", "epic", "gog", "humble", "ubisoft", "origin", "drm-free", "itch")
                 if not any(p in platforms_str for p in pc_stores):
-                    log.debug("GamerPower: skipping %r — mobile-only (platforms=%r)", title, platforms_str)
+                    log.debug("GamerPower: skipping %r -- mobile-only (platforms=%r)", title, platforms_str)
                     continue
 
                 # Skip items with a past end_date
@@ -705,7 +705,7 @@ class FreeStuff(commands.Cog):
                     try:
                         end_dt = datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                         if end_dt < datetime.now(timezone.utc):
-                            log.debug("GamerPower: skipping %r — expired (%s)", title, end_date_str)
+                            log.debug("GamerPower: skipping %r -- expired (%s)", title, end_date_str)
                             continue
                         end_date_display = end_date_str[:10]
                     except Exception:
@@ -728,7 +728,7 @@ class FreeStuff(commands.Cog):
                                                  timeout=aiohttp.ClientTimeout(total=5)) as r:
                         if str(r.url) != gp_url:
                             url = str(r.url)
-                            log.debug("GamerPower: resolved %s → %s", gp_url, url)
+                            log.debug("GamerPower: resolved %s -> %s", gp_url, url)
                         else:
                             log.debug("GamerPower: no redirect for %s", gp_url)
                 except Exception:
@@ -738,7 +738,7 @@ class FreeStuff(commands.Cog):
                 # Override platform based on actual redirect URL
                 url_platform = _detect_platform_from_url(url)
                 if url_platform:
-                    log.debug("GamerPower: %r — platform override %s → %s (from URL)", title, platform, url_platform)
+                    log.debug("GamerPower: %r -- platform override %s -> %s (from URL)", title, platform, url_platform)
                     platform = url_platform
 
                 image_url = item.get("image") or item.get("thumbnail") or ""
@@ -749,7 +749,7 @@ class FreeStuff(commands.Cog):
                 description = (item.get("description") or "")[:300]
                 source_url = gp_url  # original gamerpower URL before redirect
 
-                log.debug("GamerPower: %r — gp_type=%s, platform=%s, category=%s", title, item.get("type"), platform, category)
+                log.debug("GamerPower: %r -- gp_type=%s, platform=%s, category=%s", title, item.get("type"), platform, category)
                 game_id = await db.add_free_game(
                     title=title, url=url, platform=platform,
                     image_url=image_url, original_price=original_price,
@@ -757,7 +757,7 @@ class FreeStuff(commands.Cog):
                     source_url=source_url, description=description,
                 )
                 if game_id:
-                    log.debug("GamerPower: NEW game added — %r (id=%s)", title, game_id)
+                    log.debug("GamerPower: NEW game added -- %r (id=%s)", title, game_id)
                     new_games.append({
                         "title": title, "url": url, "platform": platform,
                         "image_url": image_url, "original_price": original_price,
@@ -765,16 +765,16 @@ class FreeStuff(commands.Cog):
                         "source": "gamerpower", "source_url": source_url, "description": description,
                     })
                 else:
-                    log.debug("GamerPower: already known — %r", title)
+                    log.debug("GamerPower: already known -- %r", title)
         except Exception:
             log.exception("Error fetching GamerPower giveaways")
-        log.debug("GamerPower: fetch complete — %d new game(s)", len(new_games))
+        log.debug("GamerPower: fetch complete -- %d new game(s)", len(new_games))
         return new_games
 
     async def _enrich_steam_prices(self, games: list[dict]) -> None:
         """Fill original_price from GG.deals Prices API for Steam games with a Steam App ID."""
         if not GG_DEALS_API_KEY:
-            log.debug("Steam price enrichment skipped — no GG_DEALS_API_KEY")
+            log.debug("Steam price enrichment skipped -- no GG_DEALS_API_KEY")
             return
 
         app_id_map: dict[str, dict] = {}
@@ -782,14 +782,14 @@ class FreeStuff(commands.Cog):
             if game["platform"] != "steam":
                 continue
             if game.get("original_price"):
-                log.debug("Steam prices: skipping %r — already has price", game["title"])
+                log.debug("Steam prices: skipping %r -- already has price", game["title"])
                 continue
             search_str = game.get("url", "") + game.get("_desc", "")
             m = _STEAM_APP_RE.search(search_str)
             if m:
                 app_id_map[m.group(1)] = game
             else:
-                log.debug("Steam prices: skipping %r — no Steam app ID in URL", game["title"])
+                log.debug("Steam prices: skipping %r -- no Steam app ID in URL", game["title"])
 
         if not app_id_map:
             log.debug("Steam prices: no games to enrich")
@@ -843,11 +843,11 @@ class FreeStuff(commands.Cog):
             guild_id = cfg["guild_id"]
             guild = self.bot.get_guild(int(guild_id))
             if not guild:
-                log.debug("Notify: skipping guild %s — not found", guild_id)
+                log.debug("Notify: skipping guild %s -- not found", guild_id)
                 continue
             channel = guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
             if not channel:
-                log.debug("Notify: skipping guild %s — channel not found", guild_id)
+                log.debug("Notify: skipping guild %s -- channel not found", guild_id)
                 continue
 
             allowed_platforms = json.loads(cfg.get("platforms", "[]"))
@@ -858,16 +858,16 @@ class FreeStuff(commands.Cog):
             filtered = 0
             for game in games:
                 if allowed_platforms and game["platform"] not in allowed_platforms:
-                    log.debug("Notify: guild %s — filtered %r (platform %s not in %s)", guild_id, game["title"], game["platform"], allowed_platforms)
+                    log.debug("Notify: guild %s -- filtered %r (platform %s not in %s)", guild_id, game["title"], game["platform"], allowed_platforms)
                     filtered += 1
                     continue
                 if game.get("category", "free_to_keep") not in guild_filters:
-                    log.debug("Notify: guild %s — filtered %r (category %s)", guild_id, game["title"], game.get("category"))
+                    log.debug("Notify: guild %s -- filtered %r (category %s)", guild_id, game["title"], game.get("category"))
                     filtered += 1
                     continue
                 # Epic API toggle: skip Epic API-sourced games if disabled
                 if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
-                    log.debug("Notify: guild %s — filtered %r (epic API disabled)", guild_id, game["title"])
+                    log.debug("Notify: guild %s -- filtered %r (epic API disabled)", guild_id, game["title"])
                     filtered += 1
                     continue
 
@@ -909,7 +909,7 @@ class FreeStuff(commands.Cog):
                 tasks.append(self._send_with_ratelimit(channel, embed, content=content))
                 sent += 1
 
-            log.debug("Notify: guild %s — %d sent, %d filtered", guild_id, sent, filtered)
+            log.debug("Notify: guild %s -- %d sent, %d filtered", guild_id, sent, filtered)
 
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
