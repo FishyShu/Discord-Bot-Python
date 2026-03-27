@@ -65,13 +65,13 @@
         <label>Platforms</label>
         <small>Select which platforms to get notifications for.</small>
         <div style="display:flex;flex-wrap:wrap;gap:1rem;margin-top:0.5rem;">
-            {% for p in ['steam', 'epic', 'gog', 'ubisoft', 'origin', 'humble', 'other'] %}
+            {% for p in all_platforms %}
             <div class="toggle">
                 <input type="checkbox" name="platform_{{ p }}" id="platform_{{ p }}"
                        value="{{ p }}"
                        {% if p in platforms or not cfg %}checked{% endif %}
                        onchange="updatePreview()">
-                <label for="platform_{{ p }}">{{ p|title }}</label>
+                <label for="platform_{{ p }}">{{ platform_labels[p] }}</label>
             </div>
             {% endfor %}
         </div>
@@ -246,7 +246,7 @@
             <!-- Links field -->
             <div id="prev-links-wrap" style="margin-bottom:6px;">
                 <div style="color:#72767d;font-size:0.7rem;text-transform:uppercase;font-weight:600;">Links</div>
-                <div style="color:#00b0f4;font-size:0.85rem;">🌐 Open in Browser • 🚀 Open in Epic Launcher</div>
+                <div style="color:#00b0f4;font-size:0.85rem;">🌐 Open in Browser<span id="prev-client-link"> • 🚀 Open in Epic Launcher</span></div>
             </div>
             <img id="prev-image" src="" alt="" style="width:100%;border-radius:4px;margin-top:4px;display:none;">
             <div id="prev-footer" style="color:#72767d;font-size:0.72rem;margin-top:8px;border-top:1px solid #40444b;padding-top:6px;">Epic Games • Free Games Bot</div>
@@ -260,11 +260,13 @@
 const GUILD_ID = "{{ guild.id }}";
 const PLATFORM_COLORS = {
     epic: '#2d2d2d', steam: '#1b2838', gog: '#7c3aed',
-    ubisoft: '#0070f3', origin: '#f26000', humble: '#cc3d0d', other: '#5865f2'
+    ubisoft: '#0070f3', origin: '#f26000', humble: '#cc3d0d',
+    itchio: '#fa5c5c', other: '#5865f2'
 };
 const PLATFORM_LABELS = {
     epic: 'Epic Games', steam: 'Steam', gog: 'GOG',
-    ubisoft: 'Ubisoft', origin: 'Origin / EA', humble: 'Humble Bundle', other: 'Other'
+    ubisoft: 'Ubisoft', origin: 'Origin / EA', humble: 'Humble Bundle',
+    itchio: 'itch.io', other: 'Other'
 };
 const CATEGORY_LABELS = {
     free_to_keep: '🎁 Free to Keep',
@@ -301,7 +303,7 @@ function updatePreview() {
     document.getElementById('prev-desc').style.display        = (showPrice || showExpiry || showDescription) ? '' : 'none';
     document.getElementById('prev-category-wrap').style.display = showCategory  ? '' : 'none';
     document.getElementById('prev-platform-wrap').style.display = showPlatform  ? '' : 'none';
-    document.getElementById('prev-links-wrap').style.display   = showClientLink ? '' : 'none';
+    document.getElementById('prev-client-link').style.display   = showClientLink ? '' : 'none';
     document.getElementById('prev-image').style.display = 'none';
 }
 
