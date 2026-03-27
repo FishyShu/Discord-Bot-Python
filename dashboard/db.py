@@ -382,6 +382,7 @@ async def init_db():
         for col, definition in [
             ("source_url",  "TEXT"),
             ("description", "TEXT"),
+            ("gp_type",     "TEXT"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE free_games ADD COLUMN {col} {definition}")
@@ -1191,20 +1192,21 @@ async def get_free_games_by_category(category: str, limit: int = 1) -> list[dict
 async def add_free_game(*, title: str, url: str, platform: str,
                          image_url: Optional[str] = None, original_price: Optional[str] = None,
                          source: str, category: str = "free_to_keep",
-                         source_url: Optional[str] = None, description: Optional[str] = None) -> Optional[int]:
-    """Insert a free game, returns None if URL already exists. Updates category on conflict."""
+                         source_url: Optional[str] = None, description: Optional[str] = None,
+                         gp_type: Optional[str] = None) -> Optional[int]:
+    """Insert a free game, returns None if URL already exists. Updates category/gp_type on conflict."""
     async with _connect() as db:
         try:
             cursor = await db.execute(
-                "INSERT INTO free_games (title, url, platform, image_url, original_price, source, category, source_url, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (title, url, platform, image_url, original_price, source, category, source_url, description),
+                "INSERT INTO free_games (title, url, platform, image_url, original_price, source, category, source_url, description, gp_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (title, url, platform, image_url, original_price, source, category, source_url, description, gp_type),
             )
             await db.commit()
             return cursor.lastrowid
         except aiosqlite.IntegrityError:
             await db.execute(
-                "UPDATE free_games SET category = ? WHERE url = ?",
-                (category, url),
+                "UPDATE free_games SET category = ?, gp_type = ? WHERE url = ?",
+                (category, gp_type, url),
             )
             await db.commit()
             return None

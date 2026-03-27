@@ -564,11 +564,14 @@ class FreeStuff(commands.Cog):
         # Convert DB rows to the dict format _notify_guilds expects
         games = []
         for g in all_games:
+            # Re-classify using stored gp_type so resets use latest classification logic
+            stored_gp_type = g.get("gp_type")
+            category = classify_item(g["title"], None, g.get("platform", "other"), False, gp_type=stored_gp_type)
             games.append({
                 "title": g["title"], "url": g["url"], "platform": g.get("platform", "other"),
                 "image_url": g.get("image_url", ""), "original_price": g.get("original_price", ""),
                 "end_date": (g.get("discovered_at", "") or "")[:10],
-                "category": g.get("category", "free_to_keep"),
+                "category": category,
                 "source": g.get("source", ""), "source_url": g.get("source_url", ""),
                 "description": g.get("description", ""),
             })
@@ -810,6 +813,7 @@ class FreeStuff(commands.Cog):
                     image_url=image_url, original_price=original_price,
                     source="gamerpower", category=category,
                     source_url=source_url, description=description,
+                    gp_type=item.get("type"),
                 )
                 if game_id:
                     log.debug("GamerPower: NEW game added -- %r (id=%s)", title, game_id)
