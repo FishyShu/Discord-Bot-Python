@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from datetime import datetime, timedelta, timezone
 
 import aiohttp
@@ -30,6 +31,12 @@ _TITLE_NOISE_RE = re.compile(r"^\((?:game|dlc|loot|beta|early access)\)\s*", re.
 def _clean_title_noise(title: str) -> str:
     """Strip common GamerPower prefixes like '(Game)', '(DLC)', etc."""
     return _TITLE_NOISE_RE.sub("", title).strip() or title
+
+
+def _normalize_title(title: str) -> str:
+    """Lowercase, strip accents, remove non-alphanumeric for cross-source dedup."""
+    t = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]", "", t.lower())
 
 
 _GAMERPOWER_PLATFORM_MAP: dict[str, str] = {
@@ -570,7 +577,11 @@ class FreeStuff(commands.Cog):
                 return
             game_id = game["game_id"]
             if await db.is_game_seen(guild_id, "epic", game_id):
-                log.debug("Epic: %r → guild %s — skipped (already announced)", game["title"], guild_id)
+                log.debug("Epic: %r → guild %s — skipped (already announced, same source)", game["title"], guild_id)
+                return
+            norm = _normalize_title(game["title"])
+            if await db.is_game_seen_by_title(guild_id, norm):
+                log.debug("Epic: %r → guild %s — skipped (already announced by different source)", game["title"], guild_id)
                 return
 
             guild = self.bot.get_guild(int(guild_id))
@@ -636,7 +647,7 @@ class FreeStuff(commands.Cog):
 
             try:
                 await channel.send(content=content, embed=embed)
-                await db.mark_game_seen(guild_id, "epic", game_id, now_iso, game.get("end_date") or None)
+                await db.mark_game_seen(guild_id, "epic", game_id, now_iso, game.get("end_date") or None, normalized_title=norm)
                 log.info("Epic: %r → guild %s — announced (category=%s, url=%s)", game["title"], guild_id, game.get("category"), game.get("url"))
             except discord.HTTPException as e:
                 log.warning("Epic: failed to send to guild %s: %s", guild_id, e)
@@ -863,7 +874,11 @@ class FreeStuff(commands.Cog):
                 log.debug("FreeStuff.gg: %r → guild %s — skipped (freestuffgg disabled)", title, guild_id)
                 return
             if await db.is_game_seen(guild_id, "freestuffgg", game_id):
-                log.debug("FreeStuff.gg: %r → guild %s — skipped (already announced)", title, guild_id)
+                log.debug("FreeStuff.gg: %r → guild %s — skipped (already announced, same source)", title, guild_id)
+                return
+            norm = _normalize_title(title)
+            if await db.is_game_seen_by_title(guild_id, norm):
+                log.debug("FreeStuff.gg: %r → guild %s — skipped (already announced by different source)", title, guild_id)
                 return
 
             guild = self.bot.get_guild(int(guild_id))
@@ -929,7 +944,7 @@ class FreeStuff(commands.Cog):
 
             try:
                 await channel.send(content=content, embed=embed)
-                await db.mark_game_seen(guild_id, "freestuffgg", game_id, now_iso, expires_iso)
+                await db.mark_game_seen(guild_id, "freestuffgg", game_id, now_iso, expires_iso, normalized_title=norm)
                 log.info("FreeStuff.gg: %r → guild %s — announced (platform=%s, category=%s, url=%s)", title, guild_id, platform, category, url)
             except discord.HTTPException as e:
                 log.warning("FreeStuff.gg: failed to send to guild %s: %s", guild_id, e)
@@ -967,7 +982,11 @@ class FreeStuff(commands.Cog):
                 return
             game_id = game["game_id"]
             if await db.is_game_seen(guild_id, "gamerpower", game_id):
-                log.debug("GamerPower: %r → guild %s — skipped (already announced)", game["title"], guild_id)
+                log.debug("GamerPower: %r → guild %s — skipped (already announced, same source)", game["title"], guild_id)
+                return
+            norm = _normalize_title(game["title"])
+            if await db.is_game_seen_by_title(guild_id, norm):
+                log.debug("GamerPower: %r → guild %s — skipped (already announced by different source)", game["title"], guild_id)
                 return
 
             guild = self.bot.get_guild(int(guild_id))
@@ -1043,7 +1062,7 @@ class FreeStuff(commands.Cog):
 
             try:
                 await channel.send(content=content, embed=embed)
-                await db.mark_game_seen(guild_id, "gamerpower", game_id, now_iso, game.get("end_date") or None)
+                await db.mark_game_seen(guild_id, "gamerpower", game_id, now_iso, game.get("end_date") or None, normalized_title=norm)
                 log.info("GamerPower: %r → guild %s — announced (platform=%s, category=%s, url=%s)", game["title"], guild_id, game["platform"], game.get("category"), game.get("url"))
             except discord.HTTPException as e:
                 log.warning("GamerPower: failed to send to guild %s: %s", guild_id, e)
@@ -1194,6 +1213,7 @@ class FreeStuff(commands.Cog):
             guild_filters = json.loads(cfg.get("content_filters") or
                 '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
 
+            seen_titles_this_reset: set[str] = set()
             for game in games:
                 if allowed_platforms and game["platform"] not in allowed_platforms:
                     continue
@@ -1219,6 +1239,12 @@ class FreeStuff(commands.Cog):
                 if cfg.get("gamerpower_official_only", 0) and game.get("source") == "gamerpower":
                     if not _detect_platform_from_url(game["url"]):
                         continue
+
+                norm = _normalize_title(game["title"])
+                if norm in seen_titles_this_reset:
+                    log.debug("pending_reset: %r → guild %s — skipped (already announced by different source)", game["title"], cfg["guild_id"])
+                    continue
+                seen_titles_this_reset.add(norm)
 
                 link_type = cfg.get("link_type", "store")
                 game_url = game["url"]

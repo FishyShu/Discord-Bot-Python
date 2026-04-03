@@ -158,11 +158,12 @@ CREATE TABLE IF NOT EXISTS freestuff_config (
 );
 
 CREATE TABLE IF NOT EXISTS freestuff_seen (
-    guild_id     TEXT NOT NULL,
-    source       TEXT NOT NULL,
-    game_id      TEXT NOT NULL,
-    announced_at TEXT NOT NULL,
-    expires_at   TEXT,
+    guild_id         TEXT NOT NULL,
+    source           TEXT NOT NULL,
+    game_id          TEXT NOT NULL,
+    announced_at     TEXT NOT NULL,
+    expires_at       TEXT,
+    normalized_title TEXT,
     PRIMARY KEY (guild_id, source, game_id)
 );
 
@@ -466,6 +467,11 @@ async def init_db():
                 PRIMARY KEY (guild_id, source, game_id)
             )
         """)
+        # v1.10.6: Add normalized_title to freestuff_seen for cross-source dedup
+        try:
+            await db.execute("ALTER TABLE freestuff_seen ADD COLUMN normalized_title TEXT")
+        except aiosqlite.OperationalError:
+            pass
         # Add message_id to xp_log (v1.9.3)
         try:
             await db.execute("ALTER TABLE xp_log ADD COLUMN message_id TEXT")
@@ -1285,15 +1291,26 @@ async def is_game_seen(guild_id: str, source: str, game_id: str) -> bool:
 
 
 async def mark_game_seen(guild_id: str, source: str, game_id: str,
-                          announced_at: str, expires_at: Optional[str] = None) -> None:
+                          announced_at: str, expires_at: Optional[str] = None,
+                          normalized_title: Optional[str] = None) -> None:
     """Record that a game was announced to a guild."""
     async with _connect() as db:
         await db.execute(
-            "INSERT OR IGNORE INTO freestuff_seen (guild_id, source, game_id, announced_at, expires_at)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (guild_id, source, game_id, announced_at, expires_at),
+            "INSERT OR IGNORE INTO freestuff_seen (guild_id, source, game_id, announced_at, expires_at, normalized_title)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (guild_id, source, game_id, announced_at, expires_at, normalized_title),
         )
         await db.commit()
+
+
+async def is_game_seen_by_title(guild_id: str, normalized_title: str) -> bool:
+    """Return True if any source already announced this normalized title to this guild."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "SELECT 1 FROM freestuff_seen WHERE guild_id = ? AND normalized_title = ? LIMIT 1",
+            (guild_id, normalized_title),
+        )
+        return await cursor.fetchone() is not None
 
 
 async def cleanup_expired_seen(before_iso: str) -> int:
