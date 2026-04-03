@@ -139,19 +139,24 @@
         <div style="border:1px solid var(--border);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">
             <strong style="font-size:0.85rem;">GamerPower (polling, every 30 min)</strong>
             <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">Polls GamerPower API as a secondary source. Covers PC/Steam/Epic/GOG/itch.io giveaways. No API key required.</small>
-            <div class="toggle">
+            <div class="toggle" style="margin-bottom:0.75rem;">
                 <input type="checkbox" name="use_gamerpower" id="use_gamerpower"
                        {% if cfg.get('use_gamerpower', 1) %}checked{% endif %}>
                 <label for="use_gamerpower">GamerPower API</label>
             </div>
-        </div>
-
-        <div>
-            <label for="link_type" style="font-size:0.85rem;">GamerPower game link destination</label>
-            <select name="link_type" id="link_type" style="margin-top:0.25rem;">
-                <option value="store" {% if cfg.get('link_type', 'store') == 'store' %}selected{% endif %}>GamerPower redirect page</option>
-                <option value="gamerpower" {% if cfg.get('link_type') == 'gamerpower' %}selected{% endif %}>GamerPower page (gamerpower.com)</option>
-            </select>
+            <div style="border-top:1px solid var(--border);padding-top:0.65rem;">
+                <strong style="font-size:0.82rem;color:var(--text-muted);">Game link destination</strong>
+                <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">
+                    Controls where the embed link points when a GamerPower game is announced.
+                    The redirect page goes to the store directly; the GamerPower page shows extra info like instructions and remaining time.
+                </small>
+                <div class="toggle">
+                    <input type="checkbox" name="link_type_gamerpower" id="link_type_gamerpower"
+                           {% if cfg.get('link_type') == 'gamerpower' %}checked{% endif %}>
+                    <label for="link_type_gamerpower">Link to GamerPower page instead of store</label>
+                </div>
+                <input type="hidden" name="link_type" id="link_type_hidden" value="{{ cfg.get('link_type', 'store') }}">
+            </div>
         </div>
 
         <div style="margin-top:0.75rem;">
@@ -317,6 +322,17 @@
 </div><!-- end flex wrapper -->
 
 <script>
+// Sync link_type toggle → hidden field
+(function() {
+    const cb = document.getElementById('link_type_gamerpower');
+    const hidden = document.getElementById('link_type_hidden');
+    if (cb && hidden) {
+        cb.addEventListener('change', () => {
+            hidden.value = cb.checked ? 'gamerpower' : 'store';
+        });
+    }
+})();
+
 const GUILD_ID = "{{ guild.id }}";
 const PLATFORM_COLORS = {
     epic: '#2d2d2d', steam: '#1b2838', gog: '#7c3aed',
