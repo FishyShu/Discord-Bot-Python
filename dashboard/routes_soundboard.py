@@ -97,7 +97,8 @@ async def soundboard_upload(guild_id: int):
         await flash("Invalid filename.", "danger")
         return redirect(url_for("soundboard.soundboard_guild", guild_id=guild_id))
 
-    await sound_file.save(dest)
+    data = await sound_file.read()
+    dest.write_bytes(data)
     await flash(f"Uploaded {safe_name}{ext}.", "success")
     return redirect(url_for("soundboard.soundboard_guild", guild_id=guild_id))
 
