@@ -566,16 +566,20 @@ class FreeStuff(commands.Cog):
         async def _send_game_to_guild(cfg: dict, game: dict):
             guild_id = cfg["guild_id"]
             if not cfg.get("use_epic_api", 1):
+                log.debug("Epic: %r → guild %s — skipped (epic disabled)", game["title"], guild_id)
                 return
             game_id = game["game_id"]
             if await db.is_game_seen(guild_id, "epic", game_id):
+                log.debug("Epic: %r → guild %s — skipped (already announced)", game["title"], guild_id)
                 return
 
             guild = self.bot.get_guild(int(guild_id))
             if not guild:
+                log.debug("Epic: %r → guild %s — skipped (guild not found)", game["title"], guild_id)
                 return
             channel = guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
             if not channel:
+                log.debug("Epic: %r → guild %s — skipped (channel not found)", game["title"], guild_id)
                 return
 
             allowed_platforms = json.loads(cfg.get("platforms", "[]"))
@@ -583,18 +587,23 @@ class FreeStuff(commands.Cog):
                 '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
 
             if allowed_platforms and "epic" not in allowed_platforms:
+                log.debug("Epic: %r → guild %s — skipped (platform 'epic' not in guild filter)", game["title"], guild_id)
                 return
             if game.get("category", "free_to_keep") not in guild_filters:
+                log.debug("Epic: %r → guild %s — skipped (category %r not in guild filter)", game["title"], guild_id, game.get("category"))
                 return
 
             min_price = cfg.get("min_original_price_cents", 0) or 0
             if min_price > 0:
                 price_cents = _parse_price_cents(game.get("original_price", ""))
                 if price_cents is not None and price_cents < min_price:
+                    log.debug("Epic: %r → guild %s — skipped (price %s < min %d cents)", game["title"], guild_id, game.get("original_price"), min_price)
                     return
 
             blocklist = json.loads(cfg.get("keyword_blocklist") or "[]")
             if any(kw.lower() in game["title"].lower() for kw in blocklist if kw.strip()):
+                matched = next(kw for kw in blocklist if kw.strip() and kw.lower() in game["title"].lower())
+                log.debug("Epic: %r → guild %s — skipped (keyword %r in title)", game["title"], guild_id, matched)
                 return
 
             mention_parts = []
@@ -628,10 +637,11 @@ class FreeStuff(commands.Cog):
             try:
                 await channel.send(content=content, embed=embed)
                 await db.mark_game_seen(guild_id, "epic", game_id, now_iso, game.get("end_date") or None)
-                log.info("Epic: announced %r to guild %s", game["title"], guild_id)
+                log.info("Epic: %r → guild %s — announced (category=%s, url=%s)", game["title"], guild_id, game.get("category"), game.get("url"))
             except discord.HTTPException as e:
                 log.warning("Epic: failed to send to guild %s: %s", guild_id, e)
 
+        log.info("Epic: fetched %d game(s), sending to %d guild(s)", len(games), len(configs))
         send_tasks = [
             _send_game_to_guild(cfg, game)
             for cfg in configs
@@ -848,15 +858,19 @@ class FreeStuff(commands.Cog):
         async def _send_to_guild(cfg: dict):
             guild_id = cfg["guild_id"]
             if not cfg.get("freestuffgg_enabled", 1):
+                log.debug("FreeStuff.gg: %r → guild %s — skipped (freestuffgg disabled)", title, guild_id)
                 return
             if await db.is_game_seen(guild_id, "freestuffgg", game_id):
+                log.debug("FreeStuff.gg: %r → guild %s — skipped (already announced)", title, guild_id)
                 return
 
             guild = self.bot.get_guild(int(guild_id))
             if not guild:
+                log.debug("FreeStuff.gg: %r → guild %s — skipped (guild not found)", title, guild_id)
                 return
             channel = guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
             if not channel:
+                log.debug("FreeStuff.gg: %r → guild %s — skipped (channel not found)", title, guild_id)
                 return
 
             allowed_platforms = json.loads(cfg.get("platforms", "[]"))
@@ -864,18 +878,23 @@ class FreeStuff(commands.Cog):
                 '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
 
             if allowed_platforms and platform not in allowed_platforms:
+                log.debug("FreeStuff.gg: %r → guild %s — skipped (platform %r not in guild filter)", title, guild_id, platform)
                 return
             if category not in guild_filters:
+                log.debug("FreeStuff.gg: %r → guild %s — skipped (category %r not in guild filter)", title, guild_id, category)
                 return
 
             min_price = cfg.get("min_original_price_cents", 0) or 0
             if min_price > 0:
                 price_cents = _parse_price_cents(price_original)
                 if price_cents is not None and price_cents < min_price:
+                    log.debug("FreeStuff.gg: %r → guild %s — skipped (price %s < min %d cents)", title, guild_id, price_original, min_price)
                     return
 
             blocklist = json.loads(cfg.get("keyword_blocklist") or "[]")
             if any(kw.lower() in title.lower() for kw in blocklist if kw.strip()):
+                matched = next(kw for kw in blocklist if kw.strip() and kw.lower() in title.lower())
+                log.debug("FreeStuff.gg: %r → guild %s — skipped (keyword %r in title)", title, guild_id, matched)
                 return
 
             mention_parts = []
@@ -909,12 +928,12 @@ class FreeStuff(commands.Cog):
             try:
                 await channel.send(content=content, embed=embed)
                 await db.mark_game_seen(guild_id, "freestuffgg", game_id, now_iso, expires_iso)
-                log.info("FreeStuff.gg: announced %r to guild %s", title, guild_id)
+                log.info("FreeStuff.gg: %r → guild %s — announced (platform=%s, category=%s, url=%s)", title, guild_id, platform, category, url)
             except discord.HTTPException as e:
                 log.warning("FreeStuff.gg: failed to send to guild %s: %s", guild_id, e)
 
+        log.info("FreeStuff.gg: processing event for %r (game_id=%s), sending to %d guild(s)", title, game_id, len(configs))
         await asyncio.gather(*[_send_to_guild(cfg) for cfg in configs], return_exceptions=True)
-        log.info("FreeStuff.gg: processed event for %r (game_id=%s)", title, game_id)
 
     # --- GamerPower polling ---
 
@@ -938,19 +957,24 @@ class FreeStuff(commands.Cog):
         async def _send_game_to_guild(cfg: dict, game: dict):
             guild_id = cfg["guild_id"]
             if not cfg.get("use_gamerpower", 1):
+                log.debug("GamerPower: %r → guild %s — skipped (gamerpower disabled)", game["title"], guild_id)
                 return
             # Skip Epic games from GamerPower if Epic API is also enabled (avoids duplicates)
             if game["platform"] == "epic" and cfg.get("use_epic_api", 1):
+                log.debug("GamerPower: %r → guild %s — skipped (Epic API handles this)", game["title"], guild_id)
                 return
             game_id = game["game_id"]
             if await db.is_game_seen(guild_id, "gamerpower", game_id):
+                log.debug("GamerPower: %r → guild %s — skipped (already announced)", game["title"], guild_id)
                 return
 
             guild = self.bot.get_guild(int(guild_id))
             if not guild:
+                log.debug("GamerPower: %r → guild %s — skipped (guild not found)", game["title"], guild_id)
                 return
             channel = guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
             if not channel:
+                log.debug("GamerPower: %r → guild %s — skipped (channel not found)", game["title"], guild_id)
                 return
 
             allowed_platforms = json.loads(cfg.get("platforms", "[]"))
@@ -958,19 +982,29 @@ class FreeStuff(commands.Cog):
                 '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
 
             if allowed_platforms and game["platform"] not in allowed_platforms:
+                log.debug("GamerPower: %r → guild %s — skipped (platform %r not in guild filter)", game["title"], guild_id, game["platform"])
                 return
             if game.get("category", "free_to_keep") not in guild_filters:
+                log.debug("GamerPower: %r → guild %s — skipped (category %r not in guild filter)", game["title"], guild_id, game.get("category"))
                 return
 
             min_price = cfg.get("min_original_price_cents", 0) or 0
             if min_price > 0:
                 price_cents = _parse_price_cents(game.get("original_price", ""))
                 if price_cents is not None and price_cents < min_price:
+                    log.debug("GamerPower: %r → guild %s — skipped (price %s < min %d cents)", game["title"], guild_id, game.get("original_price"), min_price)
                     return
 
             blocklist = json.loads(cfg.get("keyword_blocklist") or "[]")
             if any(kw.lower() in game["title"].lower() for kw in blocklist if kw.strip()):
+                matched = next(kw for kw in blocklist if kw.strip() and kw.lower() in game["title"].lower())
+                log.debug("GamerPower: %r → guild %s — skipped (keyword %r in title)", game["title"], guild_id, matched)
                 return
+
+            if cfg.get("gamerpower_official_only", 0):
+                if not _detect_platform_from_url(game["url"]):
+                    log.debug("GamerPower: %r → guild %s — skipped (URL not official store: %s)", game["title"], guild_id, game["url"])
+                    return
 
             mention_parts = []
             if cfg.get("mention_role_id"):
@@ -1008,10 +1042,11 @@ class FreeStuff(commands.Cog):
             try:
                 await channel.send(content=content, embed=embed)
                 await db.mark_game_seen(guild_id, "gamerpower", game_id, now_iso, game.get("end_date") or None)
-                log.info("GamerPower: announced %r to guild %s", game["title"], guild_id)
+                log.info("GamerPower: %r → guild %s — announced (platform=%s, category=%s, url=%s)", game["title"], guild_id, game["platform"], game.get("category"), game.get("url"))
             except discord.HTTPException as e:
                 log.warning("GamerPower: failed to send to guild %s: %s", guild_id, e)
 
+        log.info("GamerPower: fetched %d game(s), sending to %d guild(s)", len(games), len(configs))
         send_tasks = [
             _send_game_to_guild(cfg, game)
             for cfg in configs
@@ -1170,6 +1205,10 @@ class FreeStuff(commands.Cog):
                 blocklist = json.loads(cfg.get("keyword_blocklist") or "[]")
                 if any(kw.lower() in game["title"].lower() for kw in blocklist if kw.strip()):
                     continue
+
+                if cfg.get("gamerpower_official_only", 0) and game.get("source") == "gamerpower":
+                    if not _detect_platform_from_url(game["url"]):
+                        continue
 
                 link_type = cfg.get("link_type", "store")
                 game_url = game["url"]

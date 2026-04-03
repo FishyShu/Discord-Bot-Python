@@ -147,15 +147,23 @@
             <div style="border-top:1px solid var(--border);padding-top:0.65rem;">
                 <strong style="font-size:0.82rem;color:var(--text-muted);">Game link destination</strong>
                 <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">
-                    Controls where the embed link points when a GamerPower game is announced.
-                    Linking to the store page takes users directly to the giveaway; linking to the GamerPower page shows claim instructions, time remaining, and additional context.
+                    Off = embed links directly to the store via GamerPower's redirect. On = embed links to the GamerPower detail page, which shows claim instructions, time remaining, and platform info.
                 </small>
                 <div class="toggle">
                     <input type="checkbox" name="link_type_gamerpower" id="link_type_gamerpower"
                            {% if cfg.get('link_type') == 'gamerpower' %}checked{% endif %}>
-                    <label for="link_type_gamerpower">Link to GamerPower page instead of store</label>
+                    <label for="link_type_gamerpower">Show GamerPower claim page (has instructions &amp; timer)</label>
                 </div>
                 <input type="hidden" name="link_type" id="link_type_hidden" value="{{ cfg.get('link_type', 'store') }}">
+            </div>
+            <div style="border-top:1px solid var(--border);padding-top:0.65rem;margin-top:0.65rem;">
+                <strong style="font-size:0.82rem;color:var(--text-muted);">Official stores only</strong>
+                <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">When enabled, GamerPower games are only announced if their link goes to a known official store (Steam, Epic, GOG, Humble, itch.io, Xbox, PlayStation, Nintendo, Ubisoft, EA). Games on third-party key sites like IndieGala or Fanatical are skipped.</small>
+                <div class="toggle">
+                    <input type="checkbox" name="gamerpower_official_only" id="gamerpower_official_only"
+                           {% if cfg.get('gamerpower_official_only', 0) %}checked{% endif %}>
+                    <label for="gamerpower_official_only">Official stores only</label>
+                </div>
             </div>
         </div>
 
