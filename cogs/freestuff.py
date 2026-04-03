@@ -1267,17 +1267,18 @@ class FreeStuff(commands.Cog):
             guild_filters = json.loads(cfg.get("content_filters") or
                 '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
 
+            allowed_sources: set[str] = set()
+            if cfg.get("use_epic_api", 1):        allowed_sources.add("epic")
+            if cfg.get("use_gamerpower", 1):      allowed_sources.add("gamerpower")
+            if cfg.get("freestuffgg_enabled", 1): allowed_sources.add("freestuffgg")
+
             seen_titles_this_reset: set[str] = set()
             for game in games:
                 if allowed_platforms and game["platform"] not in allowed_platforms:
                     continue
                 if game.get("category", "free_to_keep") not in guild_filters:
                     continue
-                if not cfg.get("use_gamerpower", 1) and game.get("source") == "gamerpower":
-                    continue
-                if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
-                    continue
-                if not cfg.get("freestuffgg_enabled", 1) and game.get("source") == "freestuffgg":
+                if game.get("source") not in allowed_sources:
                     continue
 
                 min_price = cfg.get("min_original_price_cents", 0) or 0
