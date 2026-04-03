@@ -146,7 +146,7 @@ async def freestuff_edit(guild_id: int):
     platform_mention_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
 
     source_labels = {"freestuffgg": "FreeStuff.gg", "gamerpower": "GamerPower"}
-    webhook_configured = bool(FREESTUFFGG_WEBHOOK_SECRET)
+    webhook_configured = bool(FREESTUFFGG_PUBKEY)
 
     return await render_template(
         "freestuff_edit.html",
