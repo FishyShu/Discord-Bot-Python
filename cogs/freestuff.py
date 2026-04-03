@@ -665,6 +665,20 @@ class FreeStuff(commands.Cog):
             except discord.HTTPException as e:
                 log.warning("Epic: failed to send to guild %s: %s", guild_id, e)
 
+        # Deduplicate by normalized title — Epic API can return multiple promotions
+        # for the same underlying game (different slugs), which would both pass
+        # is_game_seen and be announced in the same asyncio.gather batch.
+        seen_norms: set[str] = set()
+        unique_games = []
+        for g in games:
+            n = _normalize_title(g["title"])
+            if n not in seen_norms:
+                seen_norms.add(n)
+                unique_games.append(g)
+            else:
+                log.debug("Epic: deduped %r (same normalized title)", g["title"])
+        games = unique_games
+
         log.info("Epic: fetched %d game(s), sending to %d guild(s)", len(games), len(configs))
         send_tasks = [
             _send_game_to_guild(cfg, game)
@@ -1083,6 +1097,18 @@ class FreeStuff(commands.Cog):
             except discord.HTTPException as e:
                 log.warning("GamerPower: failed to send to guild %s: %s", guild_id, e)
 
+        # Deduplicate by normalized title within the fetched batch
+        seen_norms: set[str] = set()
+        unique_games = []
+        for g in games:
+            n = _normalize_title(g["title"])
+            if n not in seen_norms:
+                seen_norms.add(n)
+                unique_games.append(g)
+            else:
+                log.debug("GamerPower: deduped %r (same normalized title)", g["title"])
+        games = unique_games
+
         log.info("GamerPower: fetched %d game(s), sending to %d guild(s)", len(games), len(configs))
         send_tasks = [
             _send_game_to_guild(cfg, game)
@@ -1105,6 +1131,13 @@ class FreeStuff(commands.Cog):
 
             log.debug("GamerPower: %d items returned", len(items))
             for item in items:
+                # Skip non-game types (articles, news posts, etc.)
+                gp_type_raw = (item.get("type") or "").lower()
+                _KNOWN_GP_TYPES = ("game", "loot", "beta", "early access", "dlc", "")
+                if gp_type_raw not in _KNOWN_GP_TYPES:
+                    log.debug("GamerPower: skipping %r -- unsupported type %r", item.get("title"), gp_type_raw)
+                    continue
+
                 title = _clean_title_noise((item.get("title") or "").strip())
                 gp_url = item.get("open_giveaway_url") or ""  # redirect → store
                 gp_page_url = item.get("giveaway_url") or gp_url  # GamerPower detail page
