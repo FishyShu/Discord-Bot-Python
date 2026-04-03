@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import logging
-import os
-import random
 import urllib.parse
 from typing import Optional
 
 import aiohttp
 
 log = logging.getLogger(__name__)
-
-FAL_API_KEY = os.getenv("FAL_API_KEY")
 
 # DuckDuckGo instant answer API (no key required)
 DDG_URL = "https://api.duckduckgo.com/"
@@ -80,73 +76,8 @@ async def summarize_url(url: str) -> str:
         return ""
 
 
-async def generate_image_fal(prompt: str) -> Optional[str]:
-    """
-    Generate an image via fal.ai flux/schnell and return the image URL.
-    Falls back to Pollinations.ai if FAL_API_KEY is not set.
-    """
-    if not FAL_API_KEY:
-        return _pollinations_url(prompt, seed=random.randint(1, 999999))
-
-    try:
-        headers = {
-            "Authorization": f"Key {FAL_API_KEY}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "prompt": prompt,
-            "image_size": "landscape_4_3",
-            "num_images": 1,
-        }
-        async with aiohttp.ClientSession() as session:
-            # Submit job
-            async with session.post(
-                "https://queue.fal.run/fal-ai/flux/schnell",
-                json=payload,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=5),
-            ) as resp:
-                if resp.status not in (200, 201, 202):
-                    return _pollinations_url(prompt)
-                submit_data = await resp.json()
-
-            status_url = submit_data.get("status_url")
-            response_url = submit_data.get("response_url")
-            if not status_url or not response_url:
-                return _pollinations_url(prompt)
-
-            # Poll for result (up to 60s)
-            import asyncio
-            for _ in range(20):
-                await asyncio.sleep(3)
-                async with session.get(
-                    status_url,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as poll:
-                    result = await poll.json()
-                    if result.get("status") == "COMPLETED":
-                        async with session.get(
-                            response_url,
-                            headers=headers,
-                            timeout=aiohttp.ClientTimeout(total=10),
-                        ) as res:
-                            res_data = await res.json()
-                            images = res_data.get("images", [])
-                            if images:
-                                return images[0].get("url")
-                        break
-                    elif result.get("status") in ("FAILED", "CANCELLED"):
-                        break
-
-        return _pollinations_url(prompt)
-    except Exception as e:
-        log.warning("fal.ai image generation failed: %s", e)
-        return _pollinations_url(prompt)
-
-
-def _pollinations_url(prompt: str, seed: Optional[int] = None) -> str:
-    """Fallback: Pollinations.ai image URL (no API key required)."""
+def generate_image(prompt: str, seed: Optional[int] = None) -> str:
+    """Return a Pollinations.ai image URL for the given prompt (no API key required)."""
     encoded = urllib.parse.quote(prompt)
     seed_param = f"&seed={seed}" if seed is not None else ""
     return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true{seed_param}"

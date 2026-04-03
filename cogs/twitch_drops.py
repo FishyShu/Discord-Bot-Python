@@ -262,6 +262,8 @@ class TwitchDrops(commands.Cog):
 
     @tasks.loop(minutes=30)
     async def check_loop(self):
+        if self.bot.is_closed():
+            return
         try:
             await self._fetch_drops()
         except Exception:

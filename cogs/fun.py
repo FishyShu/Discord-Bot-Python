@@ -229,6 +229,107 @@ class Fun(commands.Cog):
             log.warning("Echo webhook failed: %s", exc)
             await interaction.followup.send("Something went wrong.", ephemeral=True)
 
+    @app_commands.command(name="verify", description="Complete a quick human verification CAPTCHA")
+    async def verify(self, interaction: discord.Interaction):
+        if not await self._check(interaction, "verify"):
+            return
+        challenge = random.choice(_CAPTCHA_CHALLENGES)
+        view = VerifyCaptchaView(challenge)
+        embed = discord.Embed(
+            title="🤖 Human Verification Required",
+            description=challenge,
+            color=0xEB459E,
+        )
+        embed.set_footer(text="Powered by TotallyRealCAPTCHA™ v9.4.1")
+        await interaction.response.send_message(embed=embed, view=view)
+
+
+_CAPTCHA_CHALLENGES = [
+    "Select all squares containing a **fire hydrant**.",
+    "Click the button that is **NOT red**.",
+    "Solve this: If a train leaves at 60 mph and a duck quacks at noon, how many pancakes fit in a doghouse?",
+    "Please **check the box** below to continue.",
+    "Type the letters you see in the image above.",
+]
+
+_FAILURE_MESSAGES = [
+    "❌ Incorrect. A human would have known that.",
+    "❌ Our AI detected **4 robot behaviors** in your click pattern.",
+    "❌ Error: Too human-like. Please try again.",
+    "❌ FAILED: You blinked while clicking.",
+]
+
+
+class VerifyCaptchaView(discord.ui.View):
+    def __init__(self, challenge: str, attempt: int = 1):
+        super().__init__(timeout=60)
+        self.challenge = challenge
+        self.attempt = attempt
+
+    def _build_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title="🤖 Human Verification Required",
+            description=self.challenge,
+            color=0xEB459E,
+        )
+        embed.set_footer(text="Powered by TotallyRealCAPTCHA™ v9.4.1")
+        return embed
+
+    async def _handle_click(self, interaction: discord.Interaction):
+        for child in self.children:
+            child.disabled = True
+
+        failure = random.choice(_FAILURE_MESSAGES)
+
+        if self.attempt >= 2:
+            # Give up after 2 failures
+            embed = discord.Embed(
+                title="✅ Verification Complete",
+                description="We've decided to trust you. (We gave up.)\n\nWelcome, *probably-human*.",
+                color=0x57F287,
+            )
+            embed.set_footer(text="TotallyRealCAPTCHA™ — protecting the internet, sort of")
+            await interaction.response.edit_message(embed=embed, view=self)
+        else:
+            # Show failure + Try Again
+            new_challenge = random.choice(_CAPTCHA_CHALLENGES)
+            retry_view = VerifyCaptchaView(new_challenge, attempt=self.attempt + 1)
+            embed = discord.Embed(
+                title="🤖 Human Verification Required",
+                description=f"{failure}\n\n**New challenge:** {new_challenge}",
+                color=0xED4245,
+            )
+            embed.set_footer(text="Powered by TotallyRealCAPTCHA™ v9.4.1")
+            await interaction.response.edit_message(embed=embed, view=retry_view)
+
+    @discord.ui.button(label="1", style=discord.ButtonStyle.secondary)
+    async def btn_1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._handle_click(interaction)
+
+    @discord.ui.button(label="2", style=discord.ButtonStyle.secondary)
+    async def btn_2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._handle_click(interaction)
+
+    @discord.ui.button(label="3", style=discord.ButtonStyle.secondary)
+    async def btn_3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._handle_click(interaction)
+
+    @discord.ui.button(label="Skip", style=discord.ButtonStyle.danger)
+    async def btn_skip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        for child in self.children:
+            child.disabled = True
+        embed = discord.Embed(
+            title="✅ Verification Complete",
+            description="Skipping counts as passing. Welcome, *probably-human*.\n\n(We gave up.)",
+            color=0x57F287,
+        )
+        embed.set_footer(text="TotallyRealCAPTCHA™ — protecting the internet, sort of")
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Fun(bot))

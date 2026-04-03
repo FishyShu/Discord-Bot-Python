@@ -544,6 +544,8 @@ class FreeStuff(commands.Cog):
 
     @tasks.loop(minutes=20)
     async def check_loop(self):
+        if self.bot.is_closed():
+            return
         try:
             await self._fetch_all()
         except Exception:

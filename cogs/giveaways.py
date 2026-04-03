@@ -30,6 +30,8 @@ class Giveaways(commands.Cog):
 
     @tasks.loop(seconds=30)
     async def _check_giveaways(self):
+        if self.bot.is_closed():
+            return
         now = datetime.now(timezone.utc).isoformat()
         active = await db.get_all_active_giveaways()
         for gw in active:
