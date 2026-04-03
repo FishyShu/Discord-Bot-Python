@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Optional
@@ -112,6 +113,13 @@ class AuditLog(commands.Cog):
         webhook_url: Optional[str] = None,
     ):
         gid = str(interaction.guild_id)
+        _WEBHOOK_RE = re.compile(r"^https://discord(?:app)?\.com/api/webhooks/\d+/[\w-]+$")
+        if webhook_url is not None and not _WEBHOOK_RE.match(webhook_url):
+            await interaction.response.send_message(
+                "Invalid webhook URL. Must be a Discord webhook URL (https://discord.com/api/webhooks/...).",
+                ephemeral=True,
+            )
+            return
         await db.upsert_audit_config(
             gid,
             log_channel_id=str(channel.id),

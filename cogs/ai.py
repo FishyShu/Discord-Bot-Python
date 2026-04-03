@@ -457,6 +457,10 @@ class AI(commands.Cog):
         7. Send to Discord (chunked / webhook)
         8. Trigger long-term memory summarisation if due
         """
+        MAX_USER_INPUT = 2000
+        if len(user_content) > MAX_USER_INPUT:
+            user_content = user_content[:MAX_USER_INPUT] + " *[truncated]*"
+
         blocklist = parse_blocklist(config.get("blocklist", "[]"))
         blocked_topic = get_blocked_topic(user_content, blocklist)
         if blocked_topic:

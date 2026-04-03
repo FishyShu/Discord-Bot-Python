@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 
 import aiohttp
@@ -56,6 +57,7 @@ class TwitchDrops(commands.Cog):
         self._client_id = os.getenv("TWITCH_CLIENT_ID", "")
         self._client_secret = os.getenv("TWITCH_CLIENT_SECRET", "")
         self._access_token: str | None = None
+        self._token_expiry: float = 0.0
 
     async def cog_load(self):
         await self.refresh_cache()
@@ -72,7 +74,8 @@ class TwitchDrops(commands.Cog):
 
     async def _get_access_token(self) -> str | None:
         """Get or refresh Twitch OAuth app access token."""
-        if self._access_token:
+        now = time.time()
+        if self._access_token and now < self._token_expiry - 60:
             return self._access_token
         if not self._client_id or not self._client_secret:
             return None
@@ -91,6 +94,8 @@ class TwitchDrops(commands.Cog):
                     return None
                 data = await resp.json()
                 self._access_token = data.get("access_token")
+                self._token_expiry = now + data.get("expires_in", 3600)
+                log.info("Twitch access token refreshed, expires in %ds", data.get("expires_in", 3600))
                 return self._access_token
         except Exception:
             log.exception("Error getting Twitch access token")
@@ -306,6 +311,7 @@ class TwitchDrops(commands.Cog):
                 ) as resp:
                     if resp.status == 401:
                         self._access_token = None
+                        self._token_expiry = 0.0
                         return []
                     if resp.status != 200:
                         log.warning("Twitch Helix streams API returned %s", resp.status)

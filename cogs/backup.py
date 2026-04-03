@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import logging
@@ -23,31 +24,54 @@ class Backup(commands.Cog):
 
     async def _collect(self, guild_id: str) -> dict:
         """Gather all bot configuration for a guild into a dict."""
-        data: dict = {
+        (
+            guild_settings, welcome_cfg, audit_cfg, xp_cfg, xp_rewards,
+            reaction_roles, autoroles, custom_cmds, freestuff_cfg,
+            autotranslate_cfg, antiraid_cfg, active_giveaways,
+        ) = await asyncio.gather(
+            db.get_all_guild_settings(guild_id),
+            db.get_welcome_config(guild_id),
+            db.get_audit_config(guild_id),
+            db.get_xp_config(guild_id),
+            db.get_xp_role_rewards(guild_id),
+            db.get_reaction_roles(guild_id),
+            db.get_autoroles(guild_id),
+            db.get_commands(guild_id),
+            db.get_freestuff_config(guild_id),
+            db.get_autotranslate_config(guild_id),
+            db.get_antiraid_config(guild_id),
+            db.get_active_giveaways(guild_id),
+        )
+        return {
             "version": BOT_VERSION,
             "guild_id": guild_id,
             "exported_at": datetime.now(timezone.utc).isoformat(),
+            "guild_settings": guild_settings,
+            "welcome_config": welcome_cfg or {},
+            "audit_config": audit_cfg or {},
+            "xp_config": xp_cfg or {},
+            "xp_role_rewards": xp_rewards,
+            "reaction_roles": reaction_roles,
+            "autoroles": autoroles,
+            "custom_commands": custom_cmds,
+            "freestuff_config": freestuff_cfg or {},
+            "autotranslate_config": autotranslate_cfg or {},
+            "antiraid_config": antiraid_cfg or {},
+            "giveaways_active": active_giveaways,
         }
-
-        data["guild_settings"] = await db.get_all_guild_settings(guild_id)
-        data["welcome_config"] = await db.get_welcome_config(guild_id) or {}
-        data["audit_config"] = await db.get_audit_config(guild_id) or {}
-        data["xp_config"] = await db.get_xp_config(guild_id) or {}
-        data["xp_role_rewards"] = await db.get_xp_role_rewards(guild_id)
-        data["reaction_roles"] = await db.get_reaction_roles(guild_id)
-        data["autoroles"] = await db.get_autoroles(guild_id)
-        data["custom_commands"] = await db.get_commands(guild_id)
-        data["freestuff_config"] = await db.get_freestuff_config(guild_id) or {}
-        data["autotranslate_config"] = await db.get_autotranslate_config(guild_id) or {}
-        data["antiraid_config"] = await db.get_antiraid_config(guild_id) or {}
-        data["giveaways_active"] = await db.get_active_giveaways(guild_id)
-
-        return data
 
     async def _restore(self, guild_id: str, data: dict) -> list[str]:
         """Restore guild configuration from backup dict. Returns list of restored sections."""
+        log.info("Starting restore for guild %s (backup from %s)", guild_id, data.get("exported_at", "unknown"))
         restored = []
 
+        try:
+          return await self._restore_inner(guild_id, data, restored)
+        except Exception:
+            log.exception("Restore failed for guild %s after restoring: %s", guild_id, restored)
+            raise
+
+    async def _restore_inner(self, guild_id: str, data: dict, restored: list[str]) -> list[str]:
         if data.get("guild_settings"):
             for key, value in data["guild_settings"].items():
                 await db.set_guild_setting(guild_id, key, value)
@@ -91,6 +115,7 @@ class Backup(commands.Cog):
                 await db.upsert_antiraid_config(guild_id, **cfg)
                 restored.append("antiraid_config")
 
+        log.info("Restore complete for guild %s — sections: %s", guild_id, restored)
         return restored
 
     backup_group = app_commands.Group(

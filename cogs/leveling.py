@@ -147,6 +147,7 @@ class Leveling(commands.Cog):
             total_xp=new_xp, level=new_level,
             channel_id=str(message.channel.id),
             created_at=now_iso,
+            message_id=str(message.id),
         )
 
         # Update level if changed
@@ -188,6 +189,7 @@ class Leveling(commands.Cog):
 
         # Check role rewards — use range to catch intermediate level jumps
         rewards = self._reward_cache.get(gid, [])
+        role_replace = bool(cfg.get("xp_role_replace", 0))
         for reward in rewards:
             if old_level < reward["level"] <= new_level:
                 role = message.guild.get_role(int(reward["role_id"]))
@@ -196,6 +198,19 @@ class Leveling(commands.Cog):
                         await message.author.add_roles(role, reason=f"Level {reward['level']} reward")
                     except discord.HTTPException as e:
                         log.warning("Failed to add level reward role: %s", e)
+                # If replace mode: remove all lower-tier reward roles
+                if role_replace:
+                    for lower in rewards:
+                        if lower["level"] < reward["level"]:
+                            lower_role = message.guild.get_role(int(lower["role_id"]))
+                            if lower_role and lower_role in message.author.roles:
+                                try:
+                                    await message.author.remove_roles(
+                                        lower_role,
+                                        reason=f"Replaced by level {reward['level']} reward",
+                                    )
+                                except discord.HTTPException as e:
+                                    log.warning("Failed to remove old reward role: %s", e)
 
     # --- Admin XP commands ---
 
@@ -247,6 +262,17 @@ class Leveling(commands.Cog):
                 lines.append(f"Level {r['level']} → {rname}")
             embed.add_field(name="Role Rewards", value="\n".join(lines), inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @xp_group.command(name="rolereplace", description="Toggle whether old role rewards are removed on level-up")
+    async def xp_rolereplace(self, interaction: discord.Interaction):
+        gid = str(interaction.guild_id)
+        cfg = await db.get_xp_config(gid) or {}
+        new_val = 0 if cfg.get("xp_role_replace", 0) else 1
+        await db.upsert_xp_config(gid, xp_role_replace=new_val)
+        await self.refresh_cache()
+        state = "enabled" if new_val else "disabled"
+        detail = "Old reward roles will be removed when earning a higher one." if new_val else "All earned reward roles are kept."
+        await interaction.response.send_message(f"Role replacement {state}. {detail}", ephemeral=True)
 
     @xp_group.command(name="enable", description="Enable the XP system")
     async def xp_enable(self, interaction: discord.Interaction):

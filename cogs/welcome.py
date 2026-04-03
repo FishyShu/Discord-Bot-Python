@@ -85,9 +85,18 @@ class Welcome(commands.Cog):
             kwargs["welcome_message"] = message
         if embed_json is not None:
             try:
-                json.loads(embed_json)
+                embed_data = json.loads(embed_json)
             except json.JSONDecodeError:
                 await interaction.response.send_message("Invalid JSON for embed.", ephemeral=True)
+                return
+            if len(embed_json) > 4096:
+                await interaction.response.send_message("Embed JSON too large (max 4096 chars).", ephemeral=True)
+                return
+            if len(embed_data.get("title", "")) > 256:
+                await interaction.response.send_message("Embed title exceeds 256 characters.", ephemeral=True)
+                return
+            if len(embed_data.get("description", "")) > 4096:
+                await interaction.response.send_message("Embed description exceeds 4096 characters.", ephemeral=True)
                 return
             kwargs["welcome_embed_json"] = embed_json
         await db.upsert_welcome_config(gid, **kwargs)
@@ -121,9 +130,18 @@ class Welcome(commands.Cog):
             kwargs["goodbye_message"] = message
         if embed_json is not None:
             try:
-                json.loads(embed_json)
+                embed_data = json.loads(embed_json)
             except json.JSONDecodeError:
                 await interaction.response.send_message("Invalid JSON for embed.", ephemeral=True)
+                return
+            if len(embed_json) > 4096:
+                await interaction.response.send_message("Embed JSON too large (max 4096 chars).", ephemeral=True)
+                return
+            if len(embed_data.get("title", "")) > 256:
+                await interaction.response.send_message("Embed title exceeds 256 characters.", ephemeral=True)
+                return
+            if len(embed_data.get("description", "")) > 4096:
+                await interaction.response.send_message("Embed description exceeds 4096 characters.", ephemeral=True)
                 return
             kwargs["goodbye_embed_json"] = embed_json
         await db.upsert_welcome_config(gid, **kwargs)

@@ -36,6 +36,14 @@ class Fun(commands.Cog):
         self.bot = bot
         # {guild_id: {command: {user_id: last_used_timestamp}}}
         self._cooldowns: dict[str, dict[str, dict[str, float]]] = {}
+        self._session: aiohttp.ClientSession | None = None
+
+    async def cog_load(self):
+        self._session = aiohttp.ClientSession()
+
+    async def cog_unload(self):
+        if self._session:
+            await self._session.close()
 
     async def _check(self, interaction: discord.Interaction, command: str) -> bool:
         """
@@ -98,12 +106,11 @@ class Fun(commands.Cog):
             return
         await interaction.response.defer()
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get("https://meme-api.com/gimme", timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    if resp.status != 200:
-                        await interaction.followup.send("Failed to fetch a meme. Try again later.")
-                        return
-                    data = await resp.json()
+            async with self._session.get("https://meme-api.com/gimme", timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    await interaction.followup.send("Failed to fetch a meme. Try again later.")
+                    return
+                data = await resp.json()
             embed = discord.Embed(title=data.get("title", "Meme"), color=0xFF6B35)
             embed.set_image(url=data.get("url", ""))
             embed.set_footer(text=f"r/{data.get('subreddit', '?')} • 👍 {data.get('ups', 0)}")
@@ -122,13 +129,12 @@ class Fun(commands.Cog):
             return
         await interaction.response.defer()
         try:
-            async with aiohttp.ClientSession() as session:
-                url = f"https://some-random-api.com/animal/{animal}"
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    if resp.status != 200:
-                        await interaction.followup.send("Could not fetch an image right now.")
-                        return
-                    data = await resp.json()
+            url = f"https://some-random-api.com/animal/{animal}"
+            async with self._session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    await interaction.followup.send("Could not fetch an image right now.")
+                    return
+                data = await resp.json()
             embed = discord.Embed(title=f"Here's a {animal}! 🐾", color=0x2ECC71)
             embed.set_image(url=data.get("image", ""))
             if data.get("fact"):

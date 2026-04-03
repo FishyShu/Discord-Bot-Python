@@ -426,6 +426,16 @@ async def init_db():
             await db.execute("ALTER TABLE freestuff_config ADD COLUMN pending_reset INTEGER NOT NULL DEFAULT 0")
         except aiosqlite.OperationalError:
             pass
+        # Add message_id to xp_log (v1.9.3)
+        try:
+            await db.execute("ALTER TABLE xp_log ADD COLUMN message_id TEXT")
+        except aiosqlite.OperationalError:
+            pass
+        # Add xp_role_replace to xp_config (v1.9.3)
+        try:
+            await db.execute("ALTER TABLE xp_config ADD COLUMN xp_role_replace INTEGER NOT NULL DEFAULT 0")
+        except aiosqlite.OperationalError:
+            pass
         await db.commit()
 
 
@@ -854,12 +864,12 @@ async def delete_xp_role_reward(reward_id: int) -> bool:
 
 async def add_xp_log_entry(guild_id: str, user_id: str, xp_gained: int,
                             total_xp: int, level: int, channel_id: str,
-                            created_at: str) -> int:
+                            created_at: str, message_id: str = None) -> int:
     async with _connect() as db:
         cursor = await db.execute(
-            """INSERT INTO xp_log (guild_id, user_id, xp_gained, total_xp, level, channel_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (guild_id, user_id, xp_gained, total_xp, level, channel_id, created_at),
+            """INSERT INTO xp_log (guild_id, user_id, xp_gained, total_xp, level, channel_id, created_at, message_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (guild_id, user_id, xp_gained, total_xp, level, channel_id, created_at, message_id),
         )
         await db.commit()
         return cursor.lastrowid
