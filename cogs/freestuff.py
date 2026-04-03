@@ -1034,7 +1034,8 @@ class FreeStuff(commands.Cog):
             log.debug("GamerPower: %d items returned", len(items))
             for item in items:
                 title = _clean_title_noise((item.get("title") or "").strip())
-                gp_url = item.get("open_giveaway_url") or ""
+                gp_url = item.get("open_giveaway_url") or ""  # redirect → store
+                gp_page_url = item.get("giveaway_url") or gp_url  # GamerPower detail page
                 game_id = str(item.get("id", ""))
                 if not title or not gp_url or not game_id:
                     log.debug("GamerPower: skipping item -- missing title, URL, or id")
@@ -1082,21 +1083,21 @@ class FreeStuff(commands.Cog):
                     title=title, url=gp_url, platform=platform,
                     image_url=image_url, original_price=original_price,
                     source="gamerpower", category=category,
-                    source_url=gp_url, description=description,
+                    source_url=gp_page_url, description=description,
                     gp_type=item.get("type"),
                 )
 
                 games.append({
                     "game_id":       game_id,
                     "title":         title,
-                    "url":           gp_url,
+                    "url":           gp_url,       # open_giveaway_url → redirects to store
                     "platform":      platform,
                     "image_url":     image_url,
                     "original_price": original_price,
                     "end_date":      end_date_display,
                     "category":      category,
                     "source":        "gamerpower",
-                    "source_url":    gp_url,
+                    "source_url":    gp_page_url,  # giveaway_url → GamerPower detail page
                     "description":   description,
                 })
 
