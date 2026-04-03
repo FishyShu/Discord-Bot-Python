@@ -112,7 +112,7 @@
         <div style="border:1px solid var(--border);border-radius:8px;padding:0.75rem;margin-bottom:0.5rem;">
             <strong style="font-size:0.85rem;">FreeStuff.gg Webhook</strong>
             <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">
-                Push-based notifications from FreeStuff.gg — covers Steam, Epic, GOG, Xbox, PlayStation, Nintendo and more. Near real-time delivery with expiry info.
+                Push-based notifications from FreeStuff.gg — the broadest source, covering Steam, Epic, GOG, Xbox, PlayStation, Nintendo, and more. Delivered in real-time via webhook with accurate expiry dates and game images.
                 {% if webhook_configured %}
                 <span style="color:#43b581;">✅ Public key is configured.</span>
                 {% else %}
@@ -128,7 +128,7 @@
 
         <div style="border:1px solid var(--border);border-radius:8px;padding:0.75rem;margin-bottom:0.5rem;">
             <strong style="font-size:0.85rem;">Epic Games API (polling, every 4 hours)</strong>
-            <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">Polls the official Epic Games Store API for the weekly free games. No API key required. High-quality data with expiry dates and images.</small>
+            <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">Polls the official Epic Games Store API for the current weekly free games. No API key required. Provides accurate expiry dates, official images, and is the authoritative source for Epic giveaways — when enabled, GamerPower will not duplicate Epic games.</small>
             <div class="toggle">
                 <input type="checkbox" name="use_epic_api" id="use_epic_api"
                        {% if cfg.get('use_epic_api', 1) %}checked{% endif %}>
@@ -138,7 +138,7 @@
 
         <div style="border:1px solid var(--border);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">
             <strong style="font-size:0.85rem;">GamerPower (polling, every 30 min)</strong>
-            <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">Polls GamerPower API as a secondary source. Covers PC/Steam/Epic/GOG/itch.io giveaways. No API key required.</small>
+            <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">Polls the GamerPower API for PC game giveaways across Steam, GOG, itch.io, and more. No API key required. Best used alongside FreeStuff.gg for extra coverage. If the Epic API is also enabled, Epic giveaways from GamerPower are automatically skipped to avoid duplicates.</small>
             <div class="toggle" style="margin-bottom:0.75rem;">
                 <input type="checkbox" name="use_gamerpower" id="use_gamerpower"
                        {% if cfg.get('use_gamerpower', 1) %}checked{% endif %}>
@@ -148,7 +148,7 @@
                 <strong style="font-size:0.82rem;color:var(--text-muted);">Game link destination</strong>
                 <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">
                     Controls where the embed link points when a GamerPower game is announced.
-                    The redirect page goes to the store directly; the GamerPower page shows extra info like instructions and remaining time.
+                    Linking to the store page takes users directly to the giveaway; linking to the GamerPower page shows claim instructions, time remaining, and additional context.
                 </small>
                 <div class="toggle">
                     <input type="checkbox" name="link_type_gamerpower" id="link_type_gamerpower"

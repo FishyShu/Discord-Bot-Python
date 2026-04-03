@@ -193,8 +193,8 @@ def create_app(bot=None) -> Quart:
     @app.before_request
     async def _csrf_protect():
         if request.method == "POST":
-            # Skip CSRF for login (no session yet)
-            if request.endpoint == "auth.login":
+            # Skip CSRF for login (no session yet) and external webhooks
+            if request.endpoint in ("auth.login", "freestuff.freestuffgg_webhook"):
                 return
             await validate_csrf()
 
