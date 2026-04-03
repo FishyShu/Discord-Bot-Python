@@ -1234,19 +1234,35 @@ class FreeStuff(commands.Cog):
                 await db.upsert_freestuff_config(cfg["guild_id"], pending_reset=0)
             return 0
 
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_dt = datetime.now(timezone.utc)
+        now_iso = now_dt.isoformat()
+        FALLBACK_TTL_DAYS = 30
         games = []
         for g in all_games:
             expires = g.get("expires_at")
-            if expires and expires < now_iso:
-                log.debug("pending_reset: skipping %r — expired (%s)", g.get("title"), expires)
-                continue
+            if expires:
+                if expires < now_iso:
+                    log.debug("pending_reset: skipping %r — expired (%s)", g.get("title"), expires)
+                    continue
+            else:
+                discovered = g.get("discovered_at", "")
+                if discovered:
+                    try:
+                        disc_dt = datetime.fromisoformat(discovered.replace(" ", "T"))
+                        if disc_dt.tzinfo is None:
+                            disc_dt = disc_dt.replace(tzinfo=timezone.utc)
+                        if now_dt - disc_dt > timedelta(days=FALLBACK_TTL_DAYS):
+                            log.debug("pending_reset: skipping %r — no expiry, discovered %s (>%dd ago)",
+                                      g.get("title"), discovered[:10], FALLBACK_TTL_DAYS)
+                            continue
+                    except Exception:
+                        pass
             stored_gp_type = g.get("gp_type")
             category = classify_item(g["title"], None, g.get("platform", "other"), False, gp_type=stored_gp_type)
             games.append({
                 "title": g["title"], "url": g["url"], "platform": g.get("platform", "other"),
                 "image_url": g.get("image_url", ""), "original_price": g.get("original_price", ""),
-                "end_date": (g.get("discovered_at", "") or "")[:10],
+                "end_date": (g.get("expires_at") or g.get("discovered_at") or "")[:10],
                 "category": category,
                 "source": g.get("source", ""), "source_url": g.get("source_url", ""),
                 "description": g.get("description", ""),
