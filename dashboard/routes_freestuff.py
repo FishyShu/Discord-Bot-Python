@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -13,13 +14,13 @@ from quart import Blueprint, current_app, jsonify, redirect, render_template, re
 from .auth import login_required
 from . import db
 
+log = logging.getLogger(__name__)
+
 # FreeStuff.gg Ed25519 public key (base64-encoded), from your app dashboard
 FREESTUFFGG_PUBKEY = os.getenv("FREESTUFFGG_PUBKEY", "")
 
 # Max age (seconds) to accept webhook timestamps (replay attack protection)
 _WEBHOOK_MAX_AGE_S = 300  # 5 minutes
-# FreeStuff.gg custom epoch offset: 2025-01-01T00:00:00Z in ms
-_FSB_EPOCH_OFFSET_MS = 1_735_689_600_000
 
 freestuff_bp = Blueprint("freestuff", __name__)
 
@@ -315,6 +316,7 @@ async def freestuff_reset(guild_id: int):
 async def freestuffgg_webhook():
     """Receive FreeStuff.gg Standard Webhooks push events (Ed25519 signed)."""
     if not FREESTUFFGG_PUBKEY:
+        log.warning("FreeStuff.gg webhook received but FREESTUFFGG_PUBKEY is not set")
         return "", 500
 
     raw_body = await request.get_data()
@@ -322,31 +324,36 @@ async def freestuffgg_webhook():
     msg_ts = request.headers.get("webhook-timestamp", "")
     sig_header = request.headers.get("webhook-signature", "")
 
+    log.info("FreeStuff.gg webhook: id=%r ts=%r sig=%r body_len=%d",
+             msg_id, msg_ts, sig_header[:40] if sig_header else "", len(raw_body))
+
     if not msg_id or not msg_ts or not sig_header:
+        log.warning("FreeStuff.gg webhook: missing required headers")
         return "", 400
 
-    # Convert FreeStuff custom epoch (seconds since 2025-01-01) to real Unix ms
+    # webhook-timestamp is a plain Unix timestamp in seconds (Standard Webhooks spec)
     try:
-        ts_real_ms = int(msg_ts) * 1000 + _FSB_EPOCH_OFFSET_MS
-        ts_real_s = ts_real_ms / 1000
+        ts_real_s = int(msg_ts)
     except ValueError:
+        log.warning("FreeStuff.gg webhook: unparseable timestamp %r", msg_ts)
         return "", 400
 
     # Reject stale timestamps
-    if abs(time.time() - ts_real_s) > _WEBHOOK_MAX_AGE_S:
+    age = abs(time.time() - ts_real_s)
+    if age > _WEBHOOK_MAX_AGE_S:
+        log.warning("FreeStuff.gg webhook: stale timestamp (age=%.0fs)", age)
         return "", 400
 
     # Reconstruct signing string: "msg_id.timestamp.payload"
     signing_input = f"{msg_id}.{msg_ts}.".encode() + raw_body
 
-    # Standard Webhooks signature header format: "v1a,<base64>" (one or more, comma-separated)
+    # Standard Webhooks signature header format: "v1,<base64>" (space-separated, multiple allowed)
     try:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
         from cryptography.exceptions import InvalidSignature
         pub_key = Ed25519PublicKey.from_public_bytes(base64.b64decode(FREESTUFFGG_PUBKEY))
         verified = False
         for sig_part in sig_header.split(" "):
-            # Each part: "v1a,<base64sig>"
             if "," not in sig_part:
                 continue
             _, sig_b64 = sig_part.split(",", 1)
@@ -357,14 +364,19 @@ async def freestuffgg_webhook():
             except (InvalidSignature, Exception):
                 continue
         if not verified:
+            log.warning("FreeStuff.gg webhook: signature verification failed")
             return "", 401
     except Exception:
+        log.exception("FreeStuff.gg webhook: error during signature verification")
         return "", 401
 
     try:
         envelope = json.loads(raw_body)
     except Exception:
+        log.warning("FreeStuff.gg webhook: invalid JSON body")
         return "", 400
+
+    log.info("FreeStuff.gg webhook: verified OK, type=%r", envelope.get("type"))
 
     bot = current_app.bot
     cog = bot.get_cog("FreeStuff") if bot else None
