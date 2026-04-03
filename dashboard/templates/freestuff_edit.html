@@ -153,6 +153,22 @@
                 <option value="gamerpower" {% if cfg.get('link_type') == 'gamerpower' %}selected{% endif %}>GamerPower page (gamerpower.com)</option>
             </select>
         </div>
+
+        <div style="margin-top:0.75rem;">
+            <label for="min_original_price" style="font-size:0.85rem;">Minimum original price ($)</label>
+            <input type="number" name="min_original_price" id="min_original_price" min="0" step="1"
+                   value="{{ ((cfg.get('min_original_price_cents', 0) or 0) / 100)|round(0)|int }}"
+                   style="width:100px;margin-top:0.25rem;">
+            <small style="display:block;color:var(--text-muted);margin-top:2px;">Skip games originally priced below this amount (0 = show all). Useful to filter out low-value giveaways.</small>
+        </div>
+
+        <div style="margin-top:0.75rem;">
+            <label for="keyword_blocklist" style="font-size:0.85rem;">Title Keyword Blocklist</label>
+            <textarea name="keyword_blocklist" id="keyword_blocklist" rows="3"
+                      placeholder="e.g. beta&#10;early access&#10;demo"
+                      style="margin-top:0.25rem;">{{ '\n'.join((cfg.get('keyword_blocklist') or '[]')|from_json_or_empty) }}</textarea>
+            <small style="display:block;color:var(--text-muted);margin-top:2px;">One keyword per line. Games whose titles contain any of these words will be silently skipped.</small>
+        </div>
     </div>
 
     <div class="form-group">

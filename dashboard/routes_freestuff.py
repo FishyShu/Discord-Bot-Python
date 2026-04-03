@@ -217,6 +217,8 @@ async def freestuff_save(guild_id: int):
         embed_show_client_link=1 if form.get("embed_show_client_link") else 0,
         embed_show_description=1 if form.get("embed_show_description") else 0,
         embed_clean_titles=1 if form.get("embed_clean_titles") else 0,
+        min_original_price_cents=int(float(form.get("min_original_price", 0) or 0) * 100),
+        keyword_blocklist=json.dumps([k.strip() for k in (form.get("keyword_blocklist", "") or "").splitlines() if k.strip()]),
     )
 
     cog = bot.get_cog("FreeStuff")

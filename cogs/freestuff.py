@@ -97,7 +97,8 @@ CATEGORY_KEYWORDS = {
     "free_weekend":      ["free weekend", "free to play weekend", "[weekend]", "play for free this weekend"],
     "gamedev_assets":    ["asset", "game dev", "unity", "unreal", "blender", "template", "plugin", "tool for dev"],
     "giveaways_rewards": ["giveaway", "key giveaway", "redeem", "reward code", "prime gaming", "humble choice",
-                          "emblem code", "bonus code"],
+                          "emblem code", "bonus code", "key", "steam key", "activation code",
+                          "gift code", "claim your key", "copy is free"],
     "dlc":               ["dlc", "expansion", "content pack", "add-on", "addon", "bonus content"],
     "loot":              ["in-game", "loot", "cosmetic", "skin", "emblem", "gift pack", "pack key",
                           "item key", "unlock key"],
@@ -145,14 +146,14 @@ _GP_TYPE_TO_CATEGORY: dict[str, str] = {
 }
 
 
-def classify_item(title: str, flair: str | None, platform: str, is_free_weekend: bool, *, gp_type: str | None = None) -> str:
+def classify_item(title: str, flair: str | None, platform: str, is_free_weekend: bool, *, gp_type: str | None = None, description: str | None = None) -> str:
     if is_free_weekend:
         return "free_weekend"
     if gp_type:
         mapped = _GP_TYPE_TO_CATEGORY.get(gp_type.lower())
         if mapped:
             return mapped
-    text = (title + " " + (flair or "")).lower()
+    text = (title + " " + (flair or "") + " " + (description or "")).lower()
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw in text for kw in keywords):
             return category
@@ -174,6 +175,12 @@ _PLATFORM_DOMAIN_MAP: list[tuple[str, str]] = [
     ("playstation.com", "playstation"),
     ("nintendo.com", "nintendo"),
 ]
+
+
+def _parse_price_cents(price_str: str) -> int | None:
+    """Parse '$19.99' or '19.99 USD' → 1999 cents. Returns None if unparseable."""
+    m = re.search(r"[\d.]+", (price_str or "").replace(",", ""))
+    return int(float(m.group()) * 100) if m else None
 
 
 def _detect_platform_from_url(url: str) -> str | None:
@@ -580,6 +587,16 @@ class FreeStuff(commands.Cog):
             if game.get("category", "free_to_keep") not in guild_filters:
                 return
 
+            min_price = cfg.get("min_original_price_cents", 0) or 0
+            if min_price > 0:
+                price_cents = _parse_price_cents(game.get("original_price", ""))
+                if price_cents is not None and price_cents < min_price:
+                    return
+
+            blocklist = json.loads(cfg.get("keyword_blocklist") or "[]")
+            if any(kw.lower() in game["title"].lower() for kw in blocklist if kw.strip()):
+                return
+
             mention_parts = []
             if cfg.get("mention_role_id"):
                 mention_parts.append(f"<@&{cfg['mention_role_id']}>")
@@ -851,6 +868,16 @@ class FreeStuff(commands.Cog):
             if category not in guild_filters:
                 return
 
+            min_price = cfg.get("min_original_price_cents", 0) or 0
+            if min_price > 0:
+                price_cents = _parse_price_cents(price_original)
+                if price_cents is not None and price_cents < min_price:
+                    return
+
+            blocklist = json.loads(cfg.get("keyword_blocklist") or "[]")
+            if any(kw.lower() in title.lower() for kw in blocklist if kw.strip()):
+                return
+
             mention_parts = []
             if cfg.get("mention_role_id"):
                 mention_parts.append(f"<@&{cfg['mention_role_id']}>")
@@ -912,6 +939,9 @@ class FreeStuff(commands.Cog):
             guild_id = cfg["guild_id"]
             if not cfg.get("use_gamerpower", 1):
                 return
+            # Skip Epic games from GamerPower if Epic API is also enabled (avoids duplicates)
+            if game["platform"] == "epic" and cfg.get("use_epic_api", 1):
+                return
             game_id = game["game_id"]
             if await db.is_game_seen(guild_id, "gamerpower", game_id):
                 return
@@ -930,6 +960,16 @@ class FreeStuff(commands.Cog):
             if allowed_platforms and game["platform"] not in allowed_platforms:
                 return
             if game.get("category", "free_to_keep") not in guild_filters:
+                return
+
+            min_price = cfg.get("min_original_price_cents", 0) or 0
+            if min_price > 0:
+                price_cents = _parse_price_cents(game.get("original_price", ""))
+                if price_cents is not None and price_cents < min_price:
+                    return
+
+            blocklist = json.loads(cfg.get("keyword_blocklist") or "[]")
+            if any(kw.lower() in game["title"].lower() for kw in blocklist if kw.strip()):
                 return
 
             mention_parts = []
@@ -1032,8 +1072,8 @@ class FreeStuff(commands.Cog):
                 original_price = item.get("worth") or ""
                 if original_price.upper() in ("N/A", "FREE", "UNKNOWN"):
                     original_price = ""
-                category = classify_item(title, platforms_str, platform, False, gp_type=item.get("type"))
                 description = (item.get("description") or "")[:300]
+                category = classify_item(title, platforms_str, platform, False, gp_type=item.get("type"), description=description)
 
                 log.debug("GamerPower: %r -- gp_type=%s, platform=%s, category=%s", title, item.get("type"), platform, category)
 
@@ -1116,6 +1156,18 @@ class FreeStuff(commands.Cog):
                 if not cfg.get("use_gamerpower", 1) and game.get("source") == "gamerpower":
                     continue
                 if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
+                    continue
+                if not cfg.get("freestuffgg_enabled", 1) and game.get("source") == "freestuffgg":
+                    continue
+
+                min_price = cfg.get("min_original_price_cents", 0) or 0
+                if min_price > 0:
+                    price_cents = _parse_price_cents(game.get("original_price", ""))
+                    if price_cents is not None and price_cents < min_price:
+                        continue
+
+                blocklist = json.loads(cfg.get("keyword_blocklist") or "[]")
+                if any(kw.lower() in game["title"].lower() for kw in blocklist if kw.strip()):
                     continue
 
                 link_type = cfg.get("link_type", "store")

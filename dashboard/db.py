@@ -440,6 +440,15 @@ async def init_db():
             await db.execute("ALTER TABLE freestuff_config ADD COLUMN freestuffgg_enabled INTEGER NOT NULL DEFAULT 1")
         except aiosqlite.OperationalError:
             pass
+        # v1.10.2: Add min_original_price_cents and keyword_blocklist to freestuff_config
+        try:
+            await db.execute("ALTER TABLE freestuff_config ADD COLUMN min_original_price_cents INTEGER NOT NULL DEFAULT 0")
+        except aiosqlite.OperationalError:
+            pass
+        try:
+            await db.execute("ALTER TABLE freestuff_config ADD COLUMN keyword_blocklist TEXT NOT NULL DEFAULT '[]'")
+        except aiosqlite.OperationalError:
+            pass
         # v1.10.0: Create freestuff_seen table if not exists (also in SCHEMA for new installs)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS freestuff_seen (
