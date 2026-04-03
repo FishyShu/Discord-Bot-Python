@@ -214,6 +214,7 @@ def build_game_embed(
     show_client_link: bool = True,
     store_url: str = "",
     clean_titles: bool = False,
+    source: str = "",
 ) -> discord.Embed:
     if clean_titles:
         title = _clean_title_noise(title)
@@ -256,9 +257,20 @@ def build_game_embed(
 
     if show_image and image_url:
         embed.set_image(url=image_url)
-    embed.set_footer(text=f"{PLATFORM_LABELS.get(platform, platform.title())} • Free Games Bot")
+    source_label = SOURCE_LABELS.get(source, "")
+    footer_parts = [PLATFORM_LABELS.get(platform, platform.title())]
+    if source_label:
+        footer_parts.append(f"via {source_label}")
+    footer_parts.append("Free Games Bot")
+    embed.set_footer(text=" • ".join(footer_parts))
     return embed
 
+
+SOURCE_LABELS = {
+    "epic":        "Epic Games API",
+    "freestuffgg": "FreeStuff.gg",
+    "gamerpower":  "GamerPower",
+}
 
 PLATFORM_EMOJIS = {
     "steam": "\U0001f3ae",
@@ -642,6 +654,7 @@ class FreeStuff(commands.Cog):
                 show_client_link=bool(cfg.get("embed_show_client_link", 1)),
                 store_url=game.get("url", ""),
                 clean_titles=bool(cfg.get("embed_clean_titles", 0)),
+                source="epic",
             )
             embed.timestamp = datetime.now(timezone.utc)
 
@@ -812,6 +825,7 @@ class FreeStuff(commands.Cog):
         if not game_id or not title:
             log.warning("FreeStuff.gg: product missing id or title, skipping")
             return
+        description = (data.get("description") or "")[:300]
 
         # Best URL: pick the highest-priority url (lowest priority number = better)
         urls_list = sorted(data.get("urls") or [], key=lambda u: u.get("priority", 999))
@@ -863,7 +877,7 @@ class FreeStuff(commands.Cog):
             title=title, url=url, platform=platform,
             image_url=thumbnail, original_price=price_original,
             source="freestuffgg", category=category,
-            expires_at=expires_iso,
+            expires_at=expires_iso, description=description,
         )
 
         configs = await db.get_all_freestuff_configs()
@@ -934,11 +948,12 @@ class FreeStuff(commands.Cog):
                 show_platform=bool(cfg.get("embed_show_platform", 1)),
                 show_expiry=bool(cfg.get("embed_show_expiry", 1)),
                 show_image=bool(cfg.get("embed_show_image", 1)),
-                description="",
+                description=description,
                 show_description=bool(cfg.get("embed_show_description", 1)),
                 show_client_link=bool(cfg.get("embed_show_client_link", 1)),
                 store_url=url,
                 clean_titles=bool(cfg.get("embed_clean_titles", 0)),
+                source="freestuffgg",
             )
             embed.timestamp = datetime.now(timezone.utc)
 
@@ -1057,6 +1072,7 @@ class FreeStuff(commands.Cog):
                 show_client_link=bool(cfg.get("embed_show_client_link", 1)),
                 store_url=game.get("url", ""),
                 clean_titles=bool(cfg.get("embed_clean_titles", 0)),
+                source="gamerpower",
             )
             embed.timestamp = datetime.now(timezone.utc)
 
@@ -1276,6 +1292,7 @@ class FreeStuff(commands.Cog):
                     show_client_link=bool(cfg.get("embed_show_client_link", 1)),
                     store_url=game.get("url", ""),
                     clean_titles=bool(cfg.get("embed_clean_titles", 0)),
+                    source=game.get("source", ""),
                 )
                 embed.timestamp = datetime.now(timezone.utc)
                 try:
