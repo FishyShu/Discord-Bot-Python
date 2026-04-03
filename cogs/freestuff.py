@@ -21,6 +21,7 @@ if _log_level:
     log.setLevel(getattr(logging, _log_level, logging.INFO))
 
 GAMERPOWER_API_URL = "https://www.gamerpower.com/api/giveaways"
+EPIC_API = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
 FREESTUFFGG_PUBKEY = os.getenv("FREESTUFFGG_PUBKEY", "")
 
 _TITLE_NOISE_RE = re.compile(r"^\((?:game|dlc|loot|beta|early access)\)\s*", re.IGNORECASE)
@@ -326,10 +327,12 @@ class FreeStuff(commands.Cog):
         await self.refresh_cache()
         self._session = aiohttp.ClientSession()
         self._gamerpower_task.start()
+        self._epic_task.start()
         self._cleanup_seen_task.start()
 
     async def cog_unload(self):
         self._gamerpower_task.cancel()
+        self._epic_task.cancel()
         self._cleanup_seen_task.cancel()
         if self._session:
             await self._session.close()
@@ -382,6 +385,7 @@ class FreeStuff(commands.Cog):
         enabled = bool(cfg.get("enabled"))
         freestuffgg_on = bool(cfg.get("freestuffgg_enabled", 1))
         gamerpower_on = bool(cfg.get("use_gamerpower", 1))
+        epic_on = bool(cfg.get("use_epic_api", 1))
         webhook_configured = bool(FREESTUFFGG_PUBKEY)
 
         embed = discord.Embed(title="Free Stuff Config", color=0x43B581)
@@ -394,6 +398,7 @@ class FreeStuff(commands.Cog):
             inline=True,
         )
         embed.add_field(name="GamerPower", value="\u2705 On" if gamerpower_on else "\u274c Off", inline=True)
+        embed.add_field(name="Epic Games API", value="\u2705 On" if epic_on else "\u274c Off", inline=True)
 
         platform_lines = []
         for p in ALL_PLATFORMS:
@@ -473,12 +478,12 @@ class FreeStuff(commands.Cog):
             content=f"Re-announced **{count}** game(s) to this server."
         )
 
-    @freestuff_group.command(name="check", description="Manually trigger a GamerPower check now")
+    @freestuff_group.command(name="check", description="Manually trigger a GamerPower and Epic Games check now")
     async def freestuff_check(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        await self._poll_gamerpower()
+        await asyncio.gather(self._poll_gamerpower(), self._poll_epic())
         recent = await db.get_free_games(limit=10)
-        msg = "GamerPower check complete — new games (if any) have been announced.\n\n"
+        msg = "GamerPower + Epic check complete — new games (if any) have been announced.\n\n"
         if recent:
             embed = discord.Embed(title="Recent Free Games (GamerPower)", color=0x43B581)
             for game in recent[:10]:
@@ -518,6 +523,219 @@ class FreeStuff(commands.Cog):
     @_cleanup_seen_task.before_loop
     async def _before_cleanup_seen_task(self):
         await self.bot.wait_until_ready()
+
+    # --- Epic Games API polling ---
+
+    @tasks.loop(hours=4)
+    async def _epic_task(self):
+        if self.bot.is_closed():
+            return
+        try:
+            await self._poll_epic()
+        except Exception:
+            log.exception("Error in Epic Games poll task")
+
+    @_epic_task.before_loop
+    async def _before_epic_task(self):
+        await self.bot.wait_until_ready()
+
+    async def _poll_epic(self):
+        """Fetch Epic free games and announce new ones to all guilds."""
+        configs = await db.get_all_freestuff_configs()
+        if not configs:
+            return
+
+        any_epic = any(cfg.get("use_epic_api", 1) for cfg in configs)
+        if not any_epic:
+            log.debug("Epic: skipped -- no guilds have use_epic_api enabled")
+            return
+
+        games = await self._fetch_epic()
+        if not games:
+            return
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        async def _send_game_to_guild(cfg: dict, game: dict):
+            guild_id = cfg["guild_id"]
+            if not cfg.get("use_epic_api", 1):
+                return
+            game_id = game["game_id"]
+            if await db.is_game_seen(guild_id, "epic", game_id):
+                return
+
+            guild = self.bot.get_guild(int(guild_id))
+            if not guild:
+                return
+            channel = guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
+            if not channel:
+                return
+
+            allowed_platforms = json.loads(cfg.get("platforms", "[]"))
+            guild_filters = json.loads(cfg.get("content_filters") or
+                '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
+
+            if allowed_platforms and "epic" not in allowed_platforms:
+                return
+            if game.get("category", "free_to_keep") not in guild_filters:
+                return
+
+            mention_parts = []
+            if cfg.get("mention_role_id"):
+                mention_parts.append(f"<@&{cfg['mention_role_id']}>")
+            platform_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
+            if "epic" in platform_roles:
+                mention_parts.append(f"<@&{platform_roles['epic']}>")
+            content = " ".join(mention_parts) or None
+
+            embed = build_game_embed(
+                title=game["title"], url=game["url"], platform="epic",
+                image_url=game.get("image_url", ""),
+                original_price=game.get("original_price", ""),
+                end_date=game.get("end_date", ""),
+                category=game.get("category", "free_to_keep"),
+                embed_color=cfg.get("embed_color") or None,
+                show_price=bool(cfg.get("embed_show_price", 1)),
+                show_category=bool(cfg.get("embed_show_category", 1)),
+                show_platform=bool(cfg.get("embed_show_platform", 1)),
+                show_expiry=bool(cfg.get("embed_show_expiry", 1)),
+                show_image=bool(cfg.get("embed_show_image", 1)),
+                description=game.get("description", ""),
+                show_description=bool(cfg.get("embed_show_description", 1)),
+                show_client_link=bool(cfg.get("embed_show_client_link", 1)),
+                store_url=game.get("url", ""),
+                clean_titles=bool(cfg.get("embed_clean_titles", 0)),
+            )
+            embed.timestamp = datetime.now(timezone.utc)
+
+            try:
+                await channel.send(content=content, embed=embed)
+                await db.mark_game_seen(guild_id, "epic", game_id, now_iso, game.get("end_date") or None)
+                log.info("Epic: announced %r to guild %s", game["title"], guild_id)
+            except discord.HTTPException as e:
+                log.warning("Epic: failed to send to guild %s: %s", guild_id, e)
+
+        send_tasks = [
+            _send_game_to_guild(cfg, game)
+            for cfg in configs
+            for game in games
+        ]
+        await asyncio.gather(*send_tasks, return_exceptions=True)
+
+    async def _fetch_epic(self) -> list[dict]:
+        """Fetch current Epic Games Store free promotions. Returns list of game dicts."""
+        games = []
+        try:
+            params = {"locale": "en-US", "country": "US", "allowCountries": "US"}
+            headers = {"User-Agent": "DiscordBot/1.0"}
+            async with self._session.get(EPIC_API, params=params, headers=headers,
+                                         timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                log.debug("Epic API response status: %d", resp.status)
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+
+            elements = (
+                data.get("data", {})
+                    .get("Catalog", {})
+                    .get("searchStore", {})
+                    .get("elements", [])
+            )
+            log.debug("Epic: %d elements returned", len(elements))
+            now = datetime.now(timezone.utc)
+
+            for item in elements:
+                promotions = item.get("promotions") or {}
+                promo_offers = (
+                    promotions.get("promotionalOffers") or []
+                )
+                # Only current promotions (not upcoming)
+                active_offers = []
+                for offer_group in promo_offers:
+                    for offer in offer_group.get("promotionalOffers") or []:
+                        discount = offer.get("discountSetting", {})
+                        if discount.get("discountPercentage", 100) == 0:
+                            # 0% discount = free
+                            try:
+                                start = datetime.fromisoformat(
+                                    offer["startDate"].replace("Z", "+00:00")
+                                )
+                                end = datetime.fromisoformat(
+                                    offer["endDate"].replace("Z", "+00:00")
+                                )
+                                if start <= now <= end:
+                                    active_offers.append((start, end))
+                            except Exception:
+                                pass
+
+                if not active_offers:
+                    continue
+
+                end_dt = max(e for _, e in active_offers)
+                end_date_iso = end_dt.isoformat()
+
+                title = (item.get("title") or "").strip()
+                if not title:
+                    continue
+
+                # page_slug or productSlug as game_id
+                slug = ""
+                catalog_ns = item.get("catalogNs") or {}
+                mappings = catalog_ns.get("mappings") or []
+                if mappings:
+                    slug = mappings[0].get("pageSlug") or ""
+                if not slug:
+                    slug = item.get("productSlug") or item.get("urlSlug") or ""
+                if not slug:
+                    import hashlib
+                    slug = hashlib.md5(title.encode()).hexdigest()[:12]
+
+                url = f"https://store.epicgames.com/p/{slug}" if slug else "https://store.epicgames.com/free-games"
+
+                # Key image (OfferImageWide or Thumbnail)
+                image_url = ""
+                for key_img in item.get("keyImages") or []:
+                    if key_img.get("type") in ("OfferImageWide", "DieselStoreFrontWide", "Thumbnail"):
+                        image_url = key_img.get("url", "")
+                        if image_url:
+                            break
+
+                # Original price
+                price_info = item.get("price") or {}
+                total_price = price_info.get("totalPrice") or {}
+                original_price_cents = total_price.get("originalPrice", 0)
+                currency = total_price.get("currencyCode", "USD")
+                original_price = ""
+                if original_price_cents and original_price_cents > 0:
+                    original_price = f"${original_price_cents / 100:.2f}"
+
+                description = (item.get("description") or "")[:300]
+                category = classify_item(title, None, "epic", False)
+
+                await db.add_free_game(
+                    title=title, url=url, platform="epic",
+                    image_url=image_url, original_price=original_price,
+                    source="epic", category=category,
+                    description=description,
+                )
+
+                games.append({
+                    "game_id":        slug,
+                    "title":          title,
+                    "url":            url,
+                    "platform":       "epic",
+                    "image_url":      image_url,
+                    "original_price": original_price,
+                    "end_date":       end_date_iso,
+                    "category":       category,
+                    "source":         "epic",
+                    "description":    description,
+                })
+
+        except Exception:
+            log.exception("Error fetching Epic free games")
+        log.debug("Epic: fetch complete -- %d item(s)", len(games))
+        return games
 
     # --- FreeStuff.gg webhook handler ---
 
@@ -896,6 +1114,8 @@ class FreeStuff(commands.Cog):
                 if game.get("category", "free_to_keep") not in guild_filters:
                     continue
                 if not cfg.get("use_gamerpower", 1) and game.get("source") == "gamerpower":
+                    continue
+                if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
                     continue
 
                 link_type = cfg.get("link_type", "store")

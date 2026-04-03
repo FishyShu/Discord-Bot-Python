@@ -145,7 +145,7 @@ async def freestuff_edit(guild_id: int):
 
     platform_mention_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
 
-    source_labels = {"freestuffgg": "FreeStuff.gg", "gamerpower": "GamerPower"}
+    source_labels = {"freestuffgg": "FreeStuff.gg", "gamerpower": "GamerPower", "epic": "Epic Games"}
     webhook_configured = bool(FREESTUFFGG_PUBKEY)
 
     return await render_template(
@@ -211,6 +211,7 @@ async def freestuff_save(guild_id: int):
         embed_show_image=1 if form.get("embed_show_image") else 0,
         embed_color=form.get("embed_color", "").strip() or None,
         use_gamerpower=1 if form.get("use_gamerpower") else 0,
+        use_epic_api=1 if form.get("use_epic_api") else 0,
         freestuffgg_enabled=1 if form.get("freestuffgg_enabled") else 0,
         link_type=form.get("link_type", "store"),
         embed_show_client_link=1 if form.get("embed_show_client_link") else 0,
