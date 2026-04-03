@@ -40,7 +40,7 @@ async def backup_export(guild_id: int):
 
     cog = bot.get_cog("Backup") if bot else None
     if cog and hasattr(cog, "_collect"):
-        data = await cog._collect(guild)
+        data = await cog._collect(str(guild_id))
     else:
         # Fallback: collect common config sections directly
         data = {
@@ -84,7 +84,7 @@ async def backup_restore(guild_id: int):
 
     cog = bot.get_cog("Backup") if bot else None
     if cog and hasattr(cog, "_restore"):
-        restored = await cog._restore(guild, data)
+        restored = await cog._restore(str(guild_id), data)
         await flash(f"Restore complete. Sections restored: {restored}", "success")
     else:
         await flash("Backup cog not available for restore.", "warning")

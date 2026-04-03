@@ -12,7 +12,8 @@ from dashboard import db
 
 log = logging.getLogger(__name__)
 
-SOUNDS_DIR = Path(__file__).resolve().parent.parent / "sounds"
+SOUNDS_DIR = Path(__file__).resolve().parent.parent / "sounds"          # global fallback (baked into image)
+GUILD_SOUNDS_DIR = Path(__file__).resolve().parent.parent / "data" / "sounds"  # per-guild uploads (persistent volume)
 ALLOWED_EXTENSIONS = {".mp3", ".wav", ".ogg"}
 
 
@@ -21,7 +22,7 @@ class Soundboard(commands.Cog):
         self.bot = bot
 
     def _sounds_dir(self, guild_id: str) -> Path:
-        return SOUNDS_DIR / guild_id
+        return GUILD_SOUNDS_DIR / guild_id
 
     def _list_sounds(self, guild_id: str | None = None) -> list[Path]:
         """Return sorted list of sound files, guild-specific overriding globals."""

@@ -8,6 +8,10 @@ from .auth import login_required
 from utils.ai_db import (
     get_server_config,
     upsert_server_config,
+    get_channel_config,
+    upsert_channel_config,
+    delete_channel_config,
+    get_all_channel_configs,
     get_recent_logs,
     clear_conversations,
     get_all_user_memories,
@@ -43,6 +47,8 @@ async def ai_edit(guild_id: int):
     blocklist = json.loads(cfg.get("blocklist") or "[]")
     channels = [c for c in guild.text_channels]
     from cogs.ai import PERSONALITY_PRESETS, PRESET_LABELS
+    channel_configs = await get_all_channel_configs(str(guild_id))
+    channel_cfg_map = {c["channel_id"]: c for c in channel_configs}
     return await render_template(
         "ai_edit.html",
         guild=guild,
@@ -50,6 +56,7 @@ async def ai_edit(guild_id: int):
         channels=channels,
         active_channels=active_channels_raw,
         blocklist=blocklist,
+        channel_cfg_map=channel_cfg_map,
         models=list(MODEL_PROVIDERS.keys()),
         model_groups={
             "🆓 Groq (Free)":         [m for m, p in MODEL_PROVIDERS.items() if p == "groq"],
@@ -143,6 +150,42 @@ async def ai_save(guild_id: int):
 
     await upsert_server_config(str(guild_id), **update_kwargs)
     await flash("AI configuration saved.", "success")
+    return redirect(url_for("ai.ai_edit", guild_id=guild_id))
+
+
+@ai_bp.route("/<int:guild_id>/channel/<channel_id>", methods=["POST"])
+@login_required
+async def ai_channel_save(guild_id: int, channel_id: str):
+    form = await request.form
+    kwargs: dict = {}
+    system_prompt = form.get("system_prompt", "").strip()
+    preset = form.get("personality_preset", "").strip()
+    language = form.get("language", "").strip()
+    tone = form.get("tone", "").strip()
+    if system_prompt:
+        kwargs["system_prompt"] = system_prompt
+        kwargs["personality_mode"] = "manual"
+    if preset:
+        kwargs["personality_preset"] = preset
+        if not system_prompt:
+            kwargs["personality_mode"] = "preset"
+    if language:
+        kwargs["language"] = language
+    if tone:
+        kwargs["tone"] = tone
+    if kwargs:
+        await upsert_channel_config(str(guild_id), channel_id, **kwargs)
+        await flash("Channel personality saved.", "success")
+    else:
+        await flash("No changes to save.", "warning")
+    return redirect(url_for("ai.ai_edit", guild_id=guild_id))
+
+
+@ai_bp.route("/<int:guild_id>/channel/<channel_id>/delete", methods=["POST"])
+@login_required
+async def ai_channel_delete(guild_id: int, channel_id: str):
+    await delete_channel_config(str(guild_id), channel_id)
+    await flash("Channel personality override removed.", "success")
     return redirect(url_for("ai.ai_edit", guild_id=guild_id))
 
 

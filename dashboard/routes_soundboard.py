@@ -10,7 +10,8 @@ from . import db
 
 soundboard_bp = Blueprint("soundboard", __name__)
 
-SOUNDS_DIR = Path(__file__).resolve().parent.parent / "sounds"
+_GLOBAL_SOUNDS_DIR = Path(__file__).resolve().parent.parent / "sounds"
+SOUNDS_DIR = Path(__file__).resolve().parent.parent / "data" / "sounds"
 ALLOWED_EXTENSIONS = {".mp3", ".wav", ".ogg"}
 
 

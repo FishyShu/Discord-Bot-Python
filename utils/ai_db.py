@@ -8,6 +8,19 @@ import aiosqlite
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "bot.db"
 
+AI_CHANNEL_SCHEMA = """
+CREATE TABLE IF NOT EXISTS ai_channel_config (
+    server_id         TEXT NOT NULL,
+    channel_id        TEXT NOT NULL,
+    system_prompt     TEXT,
+    personality_mode  TEXT,
+    personality_preset TEXT,
+    language          TEXT,
+    tone              TEXT,
+    PRIMARY KEY (server_id, channel_id)
+);
+"""
+
 AI_SCHEMA = """
 CREATE TABLE IF NOT EXISTS ai_server_config (
     server_id      TEXT PRIMARY KEY,
@@ -70,6 +83,7 @@ async def init_ai_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(AI_SCHEMA)
+        await db.executescript(AI_CHANNEL_SCHEMA)
         # Migrate: add new columns if they don't exist yet
         for col, col_type, default in _NEW_COLUMNS:
             try:
@@ -124,6 +138,54 @@ async def upsert_server_config(server_id: str, **kwargs) -> None:
 async def get_all_server_configs() -> list[dict]:
     async with _connect() as db:
         cur = await db.execute("SELECT * FROM ai_server_config")
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+
+# --------------- ai_channel_config ---------------
+
+async def get_channel_config(server_id: str, channel_id: str) -> Optional[dict]:
+    async with _connect() as db:
+        cur = await db.execute(
+            "SELECT * FROM ai_channel_config WHERE server_id = ? AND channel_id = ?",
+            (server_id, channel_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+
+async def upsert_channel_config(server_id: str, channel_id: str, **kwargs) -> None:
+    async with _connect() as db:
+        kwargs["server_id"] = server_id
+        kwargs["channel_id"] = channel_id
+        cols = list(kwargs.keys())
+        vals = list(kwargs.values())
+        placeholders = ", ".join("?" for _ in cols)
+        updates = ", ".join(
+            f"{k} = excluded.{k}" for k in cols if k not in ("server_id", "channel_id")
+        )
+        await db.execute(
+            f"INSERT INTO ai_channel_config ({', '.join(cols)}) VALUES ({placeholders})"
+            f" ON CONFLICT(server_id, channel_id) DO UPDATE SET {updates}",
+            vals,
+        )
+        await db.commit()
+
+
+async def delete_channel_config(server_id: str, channel_id: str) -> None:
+    async with _connect() as db:
+        await db.execute(
+            "DELETE FROM ai_channel_config WHERE server_id = ? AND channel_id = ?",
+            (server_id, channel_id),
+        )
+        await db.commit()
+
+
+async def get_all_channel_configs(server_id: str) -> list[dict]:
+    async with _connect() as db:
+        cur = await db.execute(
+            "SELECT * FROM ai_channel_config WHERE server_id = ?", (server_id,)
+        )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 

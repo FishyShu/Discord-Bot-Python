@@ -20,7 +20,7 @@ RUN pip install --upgrade pip && \
 COPY . .
 
 RUN groupadd -r botuser && useradd -r -g botuser -d /app botuser && \
-    mkdir -p /app/data/uploads && chown -R botuser:botuser /app/data
+    mkdir -p /app/data/uploads /app/data/sounds && chown -R botuser:botuser /app/data
 
 EXPOSE 5000
 

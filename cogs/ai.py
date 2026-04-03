@@ -17,6 +17,10 @@ from utils.ai_db import (
     init_ai_db,
     get_server_config,
     upsert_server_config,
+    get_channel_config,
+    upsert_channel_config,
+    delete_channel_config,
+    get_all_channel_configs,
     save_conversation_turn,
     get_recent_logs,
     clear_conversations,
@@ -395,11 +399,18 @@ class AI(commands.Cog):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _get_config(self, server_id: Optional[str]) -> dict:
+    async def _get_config(self, server_id: Optional[str], channel_id: Optional[str] = None) -> dict:
         if server_id is None:
             return _default_config()
-        cfg = await get_server_config(server_id)
-        return cfg or _default_config()
+        cfg = dict(await get_server_config(server_id) or _default_config())
+        # Apply per-channel personality overrides if set
+        if channel_id:
+            ch_cfg = await get_channel_config(server_id, channel_id)
+            if ch_cfg:
+                for key in ("system_prompt", "personality_mode", "personality_preset", "language", "tone"):
+                    if ch_cfg.get(key) is not None:
+                        cfg[key] = ch_cfg[key]
+        return cfg
 
     async def _send_response(
         self,
@@ -947,6 +958,89 @@ class AI(commands.Cog):
         )
 
     # ------------------------------------------------------------------
+    # Per-channel personality commands
+    # ------------------------------------------------------------------
+
+    channel_group = app_commands.Group(
+        name="channel",
+        description="Per-channel AI personality overrides",
+        parent=ai_group,
+        default_permissions=discord.Permissions(manage_guild=True),
+    )
+
+    @channel_group.command(name="set", description="Set a personality override for a specific channel")
+    @app_commands.describe(
+        channel="Channel to configure",
+        system_prompt="Custom system prompt for this channel (leave blank to keep guild default)",
+        preset="Personality preset for this channel",
+        language="Language override (e.g. en, he, auto)",
+        tone="Tone override (casual, formal, friendly)",
+    )
+    @app_commands.choices(preset=[
+        app_commands.Choice(name=label, value=key)
+        for key, label in PRESET_LABELS.items()
+    ])
+    async def ai_channel_set(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel,
+        system_prompt: Optional[str] = None,
+        preset: Optional[str] = None,
+        language: Optional[str] = None,
+        tone: Optional[str] = None,
+    ):
+        gid = str(interaction.guild_id)
+        kwargs: dict = {}
+        if system_prompt is not None:
+            kwargs["system_prompt"] = system_prompt
+            kwargs["personality_mode"] = "manual"
+        if preset is not None:
+            kwargs["personality_preset"] = preset
+            kwargs["personality_mode"] = "preset"
+        if language is not None:
+            kwargs["language"] = language
+        if tone is not None:
+            kwargs["tone"] = tone
+        if not kwargs:
+            await interaction.response.send_message("No overrides specified.", ephemeral=True)
+            return
+        await upsert_channel_config(gid, str(channel.id), **kwargs)
+        await interaction.response.send_message(
+            f"Per-channel personality set for {channel.mention}.", ephemeral=True
+        )
+
+    @channel_group.command(name="clear", description="Remove per-channel personality override")
+    @app_commands.describe(channel="Channel to reset to guild defaults")
+    async def ai_channel_clear(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        await delete_channel_config(str(interaction.guild_id), str(channel.id))
+        await interaction.response.send_message(
+            f"Per-channel override cleared for {channel.mention}. Guild defaults will apply.", ephemeral=True
+        )
+
+    @channel_group.command(name="list", description="Show all per-channel personality overrides")
+    async def ai_channel_list(self, interaction: discord.Interaction):
+        gid = str(interaction.guild_id)
+        configs = await get_all_channel_configs(gid)
+        if not configs:
+            await interaction.response.send_message("No per-channel overrides configured.", ephemeral=True)
+            return
+        lines = []
+        for c in configs:
+            ch = interaction.guild.get_channel(int(c["channel_id"]))
+            ch_mention = ch.mention if ch else f"<#{c['channel_id']}>"
+            mode = c.get("personality_mode") or "—"
+            preset = c.get("personality_preset") or "—"
+            lang = c.get("language") or "—"
+            tone = c.get("tone") or "—"
+            lines.append(f"{ch_mention}: mode=`{mode}` preset=`{preset}` lang=`{lang}` tone=`{tone}`")
+        embed = discord.Embed(
+            title="Per-Channel Personality Overrides",
+            description="\n".join(lines),
+            color=discord.Color.blurple(),
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # ------------------------------------------------------------------
     # User commands
     # ------------------------------------------------------------------
 
@@ -1011,7 +1105,8 @@ class AI(commands.Cog):
 
         mentioned = self.bot.user in message.mentions
         server_id = str(message.guild.id)
-        config = await self._get_config(server_id)
+        channel_id = str(message.channel.id)
+        config = await self._get_config(server_id, channel_id)
 
         if not config.get("enabled", 1):
             return
