@@ -25,7 +25,12 @@ GAMERPOWER_API_URL = "https://www.gamerpower.com/api/giveaways"
 EPIC_API = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
 FREESTUFFGG_PUBKEY = os.getenv("FREESTUFFGG_PUBKEY", "")
 
-_TITLE_NOISE_RE = re.compile(r"^\((?:game|dlc|loot|beta|early access)\)\s*", re.IGNORECASE)
+_TITLE_NOISE_RE = re.compile(
+    r"^\((?:game|dlc|loot|beta|early access)\)\s*"
+    r"|\s*\((?:epic\s*games?|steam|gog|itch\.?io|xbox|playstation|ubisoft|humble)[^)]*\)"
+    r"\s*(?:key\s+)?giveaway\s*$",
+    re.IGNORECASE,
+)
 
 
 def _clean_title_noise(title: str) -> str:
