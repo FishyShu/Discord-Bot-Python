@@ -28,8 +28,11 @@ class AntiRaid(commands.Cog):
         self._msg_windows: dict[tuple, deque] = defaultdict(deque)
 
     async def cog_load(self):
+        await self.refresh_cache()
+
+    async def refresh_cache(self):
         self._cache = await db.get_all_antiraid_configs()
-        log.info("AntiRaid cache loaded: %d guild(s)", len(self._cache))
+        log.info("AntiRaid cache refreshed: %d guild(s)", len(self._cache))
 
     def _cfg(self, guild_id: str) -> dict | None:
         return self._cache.get(guild_id)

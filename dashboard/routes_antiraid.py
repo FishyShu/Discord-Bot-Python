@@ -55,6 +55,9 @@ async def antiraid_save(guild_id: int):
         message_spam_enabled=int("message_spam_enabled" in form),
         message_spam_threshold=int(form.get("message_spam_threshold") or 8),
     )
+    cog = bot.get_cog("AntiRaid") if bot else None
+    if cog:
+        await cog.refresh_cache()
     await flash("Anti-raid settings saved.", "success")
     return redirect(url_for("antiraid.antiraid_edit", guild_id=guild_id))
 
