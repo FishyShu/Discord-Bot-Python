@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
+import base64
 import json
 import os
+import time
 from datetime import datetime, timezone
 
 import discord
@@ -13,7 +13,13 @@ from quart import Blueprint, current_app, jsonify, redirect, render_template, re
 from .auth import login_required
 from . import db
 
-FREESTUFFGG_WEBHOOK_SECRET = os.getenv("FREESTUFFGG_WEBHOOK_SECRET", "")
+# FreeStuff.gg Ed25519 public key (base64-encoded), from your app dashboard
+FREESTUFFGG_PUBKEY = os.getenv("FREESTUFFGG_PUBKEY", "")
+
+# Max age (seconds) to accept webhook timestamps (replay attack protection)
+_WEBHOOK_MAX_AGE_S = 300  # 5 minutes
+# FreeStuff.gg custom epoch offset: 2025-01-01T00:00:00Z in ms
+_FSB_EPOCH_OFFSET_MS = 1_735_689_600_000
 
 freestuff_bp = Blueprint("freestuff", __name__)
 
@@ -304,37 +310,62 @@ async def freestuff_reset(guild_id: int):
 
 @freestuff_bp.route("/webhook/freestuffgg", methods=["POST"])
 async def freestuffgg_webhook():
-    """Receive FreeStuff.gg Standard Webhooks push events."""
+    """Receive FreeStuff.gg Standard Webhooks push events (Ed25519 signed)."""
+    if not FREESTUFFGG_PUBKEY:
+        return "", 500
+
     raw_body = await request.get_data()
+    msg_id = request.headers.get("webhook-id", "")
+    msg_ts = request.headers.get("webhook-timestamp", "")
+    sig_header = request.headers.get("webhook-signature", "")
 
-    # Verify HMAC-SHA256 signature
-    if not FREESTUFFGG_WEBHOOK_SECRET:
-        return jsonify({"error": "Webhook secret not configured"}), 500
+    if not msg_id or not msg_ts or not sig_header:
+        return "", 400
 
-    signature_header = request.headers.get("webhook-signature", "")
-    # Standard Webhooks format: "v1,<base64-signature>" or "v1=<hex>"
-    # FreeStuff.gg uses: X-Signature or webhook-signature header with hex HMAC
-    expected = hmac.new(
-        FREESTUFFGG_WEBHOOK_SECRET.encode(),
-        raw_body,
-        hashlib.sha256,
-    ).hexdigest()
+    # Convert FreeStuff custom epoch (seconds since 2025-01-01) to real Unix ms
+    try:
+        ts_real_ms = int(msg_ts) * 1000 + _FSB_EPOCH_OFFSET_MS
+        ts_real_s = ts_real_ms / 1000
+    except ValueError:
+        return "", 400
 
-    # Accept both bare hex and "v1,<hex>" formats
-    received = signature_header.split(",")[-1].strip() if "," in signature_header else signature_header.strip()
+    # Reject stale timestamps
+    if abs(time.time() - ts_real_s) > _WEBHOOK_MAX_AGE_S:
+        return "", 400
 
-    if not hmac.compare_digest(expected, received):
-        return jsonify({"error": "Invalid signature"}), 401
+    # Reconstruct signing string: "msg_id.timestamp.payload"
+    signing_input = f"{msg_id}.{msg_ts}.".encode() + raw_body
+
+    # Standard Webhooks signature header format: "v1a,<base64>" (one or more, comma-separated)
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        from cryptography.exceptions import InvalidSignature
+        pub_key = Ed25519PublicKey.from_public_bytes(base64.b64decode(FREESTUFFGG_PUBKEY))
+        verified = False
+        for sig_part in sig_header.split(" "):
+            # Each part: "v1a,<base64sig>"
+            if "," not in sig_part:
+                continue
+            _, sig_b64 = sig_part.split(",", 1)
+            try:
+                pub_key.verify(base64.b64decode(sig_b64), signing_input)
+                verified = True
+                break
+            except (InvalidSignature, Exception):
+                continue
+        if not verified:
+            return "", 401
+    except Exception:
+        return "", 401
 
     try:
-        data = json.loads(raw_body)
+        envelope = json.loads(raw_body)
     except Exception:
-        return jsonify({"error": "Invalid JSON"}), 400
+        return "", 400
 
     bot = current_app.bot
     cog = bot.get_cog("FreeStuff") if bot else None
     if cog:
-        # Fire and forget — don't block the webhook response
-        asyncio.ensure_future(cog.handle_freestuffgg_event(data))
+        asyncio.ensure_future(cog.handle_freestuffgg_event(envelope))
 
-    return jsonify({"ok": True}), 200
+    return "", 204

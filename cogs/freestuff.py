@@ -21,7 +21,7 @@ if _log_level:
     log.setLevel(getattr(logging, _log_level, logging.INFO))
 
 GAMERPOWER_API_URL = "https://www.gamerpower.com/api/giveaways"
-FREESTUFFGG_WEBHOOK_SECRET = os.getenv("FREESTUFFGG_WEBHOOK_SECRET", "")
+FREESTUFFGG_PUBKEY = os.getenv("FREESTUFFGG_PUBKEY", "")
 
 _TITLE_NOISE_RE = re.compile(r"^\((?:game|dlc|loot|beta|early access)\)\s*", re.IGNORECASE)
 
@@ -382,7 +382,7 @@ class FreeStuff(commands.Cog):
         enabled = bool(cfg.get("enabled"))
         freestuffgg_on = bool(cfg.get("freestuffgg_enabled", 1))
         gamerpower_on = bool(cfg.get("use_gamerpower", 1))
-        webhook_configured = bool(FREESTUFFGG_WEBHOOK_SECRET)
+        webhook_configured = bool(FREESTUFFGG_PUBKEY)
 
         embed = discord.Embed(title="Free Stuff Config", color=0x43B581)
         embed.add_field(name="Enabled", value="Yes" if enabled else "No", inline=True)
@@ -521,19 +521,62 @@ class FreeStuff(commands.Cog):
 
     # --- FreeStuff.gg webhook handler ---
 
-    async def handle_freestuffgg_event(self, data: dict):
-        """Called by the dashboard webhook route after HMAC verification."""
-        game_id = str(data.get("id", ""))
-        title = data.get("title") or data.get("name") or ""
-        url = data.get("url") or data.get("store_url") or ""
-        thumbnail = data.get("thumbnail") or data.get("image") or ""
-        price_original = str(data.get("org_price") or data.get("original_price") or "")
-        expires_at_raw = data.get("until") or data.get("expires_at") or None
-        platform_raw = (data.get("store") or data.get("platform") or "other").lower()
+    async def handle_freestuffgg_event(self, envelope: dict):
+        """Called by the dashboard webhook route after Ed25519 verification.
 
-        if not game_id or not title:
-            log.warning("FreeStuff.gg: received event with missing id or title, skipping")
+        Envelope structure (Standard Webhooks):
+          { "type": "fsb:event:announcement_created",
+            "timestamp": "...",
+            "data": { "id": ..., "resolvedProducts": [...] } }
+
+        Each product in resolvedProducts:
+          id, title, description, kind, type, store, until (unix ms),
+          prices ([{oldValue, newValue, currency}]),
+          images ([{url, priority}]), urls ([{url, priority, flags}])
+        """
+        event_type = envelope.get("type", "")
+        if "announcement" not in event_type:
+            log.debug("FreeStuff.gg: ignoring event type %r", event_type)
             return
+
+        announcement = envelope.get("data", {})
+        products = announcement.get("resolvedProducts") or []
+        if not products:
+            # Fallback: treat the data itself as a single product (future-proofing)
+            products = [announcement]
+
+        for product in products:
+            await self._handle_freestuffgg_product(product)
+
+    async def _handle_freestuffgg_product(self, data: dict):
+        """Process one FreeStuff.gg product and announce to eligible guilds."""
+        game_id = str(data.get("id", ""))
+        title = data.get("title") or ""
+        if not game_id or not title:
+            log.warning("FreeStuff.gg: product missing id or title, skipping")
+            return
+
+        # Best URL: pick the highest-priority url (lowest priority number = better)
+        urls_list = sorted(data.get("urls") or [], key=lambda u: u.get("priority", 999))
+        url = urls_list[0]["url"] if urls_list else ""
+
+        # Best image: highest-priority image
+        images_list = sorted(data.get("images") or [], key=lambda i: i.get("priority", 999))
+        thumbnail = images_list[0]["url"] if images_list else ""
+
+        # Original price from prices array (oldValue is in smallest currency unit, e.g. cents)
+        price_original = ""
+        prices_list = data.get("prices") or []
+        if prices_list:
+            p = prices_list[0]
+            old_val = p.get("oldValue", 0)
+            currency = p.get("currency", "USD")
+            if old_val and old_val > 0:
+                price_original = f"{old_val / 100:.2f} {currency}"
+
+        # until is unix timestamp in milliseconds
+        expires_at_raw = data.get("until")
+        platform_raw = (data.get("store") or "other").lower()
 
         # Map FreeStuff.gg store names to our platform keys
         platform = _FREESTUFFGG_PLATFORM_MAP.get(platform_raw, "other")
@@ -544,19 +587,16 @@ class FreeStuff(commands.Cog):
 
         category = classify_item(title, None, platform, False)
 
-        # Normalize expires_at to ISO string
+        # Normalize expires_at to ISO string (until is ms since Unix epoch)
         expires_iso: str | None = None
         if expires_at_raw is not None:
             try:
-                if isinstance(expires_at_raw, (int, float)):
-                    expires_iso = datetime.fromtimestamp(expires_at_raw, tz=timezone.utc).isoformat()
-                else:
-                    expires_iso = str(expires_at_raw)
+                ts_s = expires_at_raw / 1000 if expires_at_raw > 1e10 else expires_at_raw
+                expires_iso = datetime.fromtimestamp(ts_s, tz=timezone.utc).isoformat()
             except Exception:
                 pass
 
-        # Sanitize price
-        if price_original.upper() in ("N/A", "FREE", "UNKNOWN", "0", "0.00"):
+        if price_original.upper() in ("N/A", "FREE", "UNKNOWN"):
             price_original = ""
 
         now_iso = datetime.now(timezone.utc).isoformat()
