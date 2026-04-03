@@ -107,46 +107,39 @@
 
     <div class="form-group">
         <label>Source Settings</label>
-        <small style="color:var(--text-muted);display:block;margin-bottom:0.5rem;">Choose which sources to fetch free games from. Enable at least one.</small>
+        <small style="color:var(--text-muted);display:block;margin-bottom:0.5rem;">Choose which sources to receive free games from. Enable at least one.</small>
 
         <div style="border:1px solid var(--border);border-radius:8px;padding:0.75rem;margin-bottom:0.5rem;">
-            <strong style="font-size:0.85rem;">New System (GamerPower + Epic API)</strong>
-            <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">Aggregates deals from GamerPower and Epic Games Store. Better metadata, descriptions, and price info.</small>
+            <strong style="font-size:0.85rem;">FreeStuff.gg Webhook</strong>
+            <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">
+                Push-based notifications from FreeStuff.gg — covers Steam, Epic, GOG, Xbox, PlayStation, Nintendo and more. Near real-time delivery with expiry info.
+                {% if webhook_configured %}
+                <span style="color:#43b581;">✅ Webhook secret is configured.</span>
+                {% else %}
+                <span style="color:#f04747;">⚠️ <code>FREESTUFFGG_WEBHOOK_SECRET</code> is not set — webhook events will be rejected. Register at freestuff.gg and add the secret to your .env.</span>
+                {% endif %}
+            </small>
+            <div class="toggle">
+                <input type="checkbox" name="freestuffgg_enabled" id="freestuffgg_enabled"
+                       {% if cfg.get('freestuffgg_enabled', 1) %}checked{% endif %}>
+                <label for="freestuffgg_enabled">FreeStuff.gg (webhook)</label>
+            </div>
+        </div>
+
+        <div style="border:1px solid var(--border);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">
+            <strong style="font-size:0.85rem;">GamerPower (polling, every 30 min)</strong>
+            <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">Polls GamerPower API as a secondary source. Covers PC/Steam/Epic/GOG/itch.io giveaways. No API key required.</small>
             <div class="toggle">
                 <input type="checkbox" name="use_gamerpower" id="use_gamerpower"
                        {% if cfg.get('use_gamerpower', 1) %}checked{% endif %}>
                 <label for="use_gamerpower">GamerPower API</label>
             </div>
-            <div class="toggle" style="margin-top:0.35rem;">
-                <input type="checkbox" name="use_epic_api" id="use_epic_api"
-                       {% if cfg.get('use_epic_api', 1) %}checked{% endif %}>
-                <label for="use_epic_api">Epic Games API
-                    <small style="color:var(--text-muted);font-weight:400;display:block;margin-top:2px;">Disable if GamerPower already covers Epic giveaways to avoid duplicates</small>
-                </label>
-            </div>
-            <div class="toggle" style="margin-top:0.35rem;">
-                <input type="checkbox" name="use_gg_deals" id="use_gg_deals"
-                       {% if cfg.get('use_gg_deals', 0) %}checked{% endif %}>
-                <label for="use_gg_deals">GG.deals Price Enrichment
-                    <small style="color:var(--text-muted);font-weight:400;display:block;margin-top:2px;">Shows original price (e.g. ~~$19.99~~ → FREE) on Steam game embeds</small>
-                </label>
-            </div>
-        </div>
-
-        <div style="border:1px solid var(--border);border-radius:8px;padding:0.75rem;margin-bottom:0.75rem;">
-            <strong style="font-size:0.85rem;">Legacy System (Reddit)</strong>
-            <small style="color:var(--text-muted);display:block;margin-top:2px;margin-bottom:0.5rem;">Fetches from r/FreeGameFindings. Community-curated, proven reliable.</small>
-            <div class="toggle">
-                <input type="checkbox" name="use_reddit" id="use_reddit"
-                       {% if cfg.get('use_reddit', 0) %}checked{% endif %}>
-                <label for="use_reddit">Reddit (r/FreeGameFindings)</label>
-            </div>
         </div>
 
         <div>
-            <label for="link_type" style="font-size:0.85rem;">Game link destination</label>
+            <label for="link_type" style="font-size:0.85rem;">GamerPower game link destination</label>
             <select name="link_type" id="link_type" style="margin-top:0.25rem;">
-                <option value="store" {% if cfg.get('link_type', 'store') == 'store' %}selected{% endif %}>Direct store page (Steam, Epic, etc.)</option>
+                <option value="store" {% if cfg.get('link_type', 'store') == 'store' %}selected{% endif %}>GamerPower redirect page</option>
                 <option value="gamerpower" {% if cfg.get('link_type') == 'gamerpower' %}selected{% endif %}>GamerPower page (gamerpower.com)</option>
             </select>
         </div>

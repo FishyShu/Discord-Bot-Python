@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import hmac
 import json
+import os
 from datetime import datetime, timezone
 
 import discord
@@ -8,6 +12,8 @@ from quart import Blueprint, current_app, jsonify, redirect, render_template, re
 
 from .auth import login_required
 from . import db
+
+FREESTUFFGG_WEBHOOK_SECRET = os.getenv("FREESTUFFGG_WEBHOOK_SECRET", "")
 
 freestuff_bp = Blueprint("freestuff", __name__)
 
@@ -133,7 +139,8 @@ async def freestuff_edit(guild_id: int):
 
     platform_mention_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
 
-    source_labels = {"epic": "Epic API", "gamerpower": "GamerPower", "reddit": "Reddit"}
+    source_labels = {"freestuffgg": "FreeStuff.gg", "gamerpower": "GamerPower"}
+    webhook_configured = bool(FREESTUFFGG_WEBHOOK_SECRET)
 
     return await render_template(
         "freestuff_edit.html",
@@ -150,6 +157,7 @@ async def freestuff_edit(guild_id: int):
         platform_mention_roles=platform_mention_roles,
         embed_settings=embed_settings,
         source_labels=source_labels,
+        webhook_configured=webhook_configured,
     )
 
 
@@ -196,14 +204,12 @@ async def freestuff_save(guild_id: int):
         embed_show_expiry=1 if form.get("embed_show_expiry") else 0,
         embed_show_image=1 if form.get("embed_show_image") else 0,
         embed_color=form.get("embed_color", "").strip() or None,
-        use_epic_api=1 if form.get("use_epic_api") else 0,
         use_gamerpower=1 if form.get("use_gamerpower") else 0,
+        freestuffgg_enabled=1 if form.get("freestuffgg_enabled") else 0,
         link_type=form.get("link_type", "store"),
         embed_show_client_link=1 if form.get("embed_show_client_link") else 0,
         embed_show_description=1 if form.get("embed_show_description") else 0,
         embed_clean_titles=1 if form.get("embed_clean_titles") else 0,
-        use_reddit=1 if form.get("use_reddit") else 0,
-        use_gg_deals=1 if form.get("use_gg_deals") else 0,
     )
 
     cog = bot.get_cog("FreeStuff")
@@ -294,3 +300,41 @@ async def freestuff_reset(guild_id: int):
     if cog:
         count = await cog._handle_pending_resets()
     return jsonify({"message": f"Re-announced {count} game(s) to this server."})
+
+
+@freestuff_bp.route("/webhook/freestuffgg", methods=["POST"])
+async def freestuffgg_webhook():
+    """Receive FreeStuff.gg Standard Webhooks push events."""
+    raw_body = await request.get_data()
+
+    # Verify HMAC-SHA256 signature
+    if not FREESTUFFGG_WEBHOOK_SECRET:
+        return jsonify({"error": "Webhook secret not configured"}), 500
+
+    signature_header = request.headers.get("webhook-signature", "")
+    # Standard Webhooks format: "v1,<base64-signature>" or "v1=<hex>"
+    # FreeStuff.gg uses: X-Signature or webhook-signature header with hex HMAC
+    expected = hmac.new(
+        FREESTUFFGG_WEBHOOK_SECRET.encode(),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+
+    # Accept both bare hex and "v1,<hex>" formats
+    received = signature_header.split(",")[-1].strip() if "," in signature_header else signature_header.strip()
+
+    if not hmac.compare_digest(expected, received):
+        return jsonify({"error": "Invalid signature"}), 401
+
+    try:
+        data = json.loads(raw_body)
+    except Exception:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    bot = current_app.bot
+    cog = bot.get_cog("FreeStuff") if bot else None
+    if cog:
+        # Fire and forget — don't block the webhook response
+        asyncio.ensure_future(cog.handle_freestuffgg_event(data))
+
+    return jsonify({"ok": True}), 200

@@ -157,6 +157,15 @@ CREATE TABLE IF NOT EXISTS freestuff_config (
     min_rating  INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS freestuff_seen (
+    guild_id     TEXT NOT NULL,
+    source       TEXT NOT NULL,
+    game_id      TEXT NOT NULL,
+    announced_at TEXT NOT NULL,
+    expires_at   TEXT,
+    PRIMARY KEY (guild_id, source, game_id)
+);
+
 CREATE TABLE IF NOT EXISTS free_games (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     title           TEXT NOT NULL,
@@ -426,6 +435,22 @@ async def init_db():
             await db.execute("ALTER TABLE freestuff_config ADD COLUMN pending_reset INTEGER NOT NULL DEFAULT 0")
         except aiosqlite.OperationalError:
             pass
+        # v1.10.0: Add freestuffgg_enabled to freestuff_config
+        try:
+            await db.execute("ALTER TABLE freestuff_config ADD COLUMN freestuffgg_enabled INTEGER NOT NULL DEFAULT 1")
+        except aiosqlite.OperationalError:
+            pass
+        # v1.10.0: Create freestuff_seen table if not exists (also in SCHEMA for new installs)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS freestuff_seen (
+                guild_id     TEXT NOT NULL,
+                source       TEXT NOT NULL,
+                game_id      TEXT NOT NULL,
+                announced_at TEXT NOT NULL,
+                expires_at   TEXT,
+                PRIMARY KEY (guild_id, source, game_id)
+            )
+        """)
         # Add message_id to xp_log (v1.9.3)
         try:
             await db.execute("ALTER TABLE xp_log ADD COLUMN message_id TEXT")
@@ -1229,6 +1254,39 @@ async def clear_free_games() -> int:
     """Delete all cached free game entries (forces re-announcement on next fetch). Returns rows deleted."""
     async with _connect() as db:
         cursor = await db.execute("DELETE FROM free_games")
+        await db.commit()
+        return cursor.rowcount
+
+
+async def is_game_seen(guild_id: str, source: str, game_id: str) -> bool:
+    """Return True if this game has already been announced to this guild."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "SELECT 1 FROM freestuff_seen WHERE guild_id = ? AND source = ? AND game_id = ?",
+            (guild_id, source, game_id),
+        )
+        return await cursor.fetchone() is not None
+
+
+async def mark_game_seen(guild_id: str, source: str, game_id: str,
+                          announced_at: str, expires_at: Optional[str] = None) -> None:
+    """Record that a game was announced to a guild."""
+    async with _connect() as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO freestuff_seen (guild_id, source, game_id, announced_at, expires_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (guild_id, source, game_id, announced_at, expires_at),
+        )
+        await db.commit()
+
+
+async def cleanup_expired_seen(before_iso: str) -> int:
+    """Delete freestuff_seen rows where expires_at is set and older than before_iso. Returns rows deleted."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "DELETE FROM freestuff_seen WHERE expires_at IS NOT NULL AND expires_at < ?",
+            (before_iso,),
+        )
         await db.commit()
         return cursor.rowcount
 

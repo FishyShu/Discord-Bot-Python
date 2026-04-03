@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import aiohttp
 import discord
@@ -20,33 +20,8 @@ _log_level = os.environ.get("FREESTUFF_LOG_LEVEL", "").upper()
 if _log_level:
     log.setLevel(getattr(logging, _log_level, logging.INFO))
 
-EPIC_API            = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
-GAMERPOWER_API_URL  = "https://www.gamerpower.com/api/giveaways"
-REDDIT_URL          = "https://www.reddit.com/r/FreeGameFindings/new.json?limit=25"
-GG_DEALS_PRICES_URL = "https://api.gg.deals/v1/prices/by-steam-app-id/"
-GG_DEALS_API_KEY    = os.getenv("GG_DEALS_API_KEY", "")
-
-_STEAM_APP_RE = re.compile(r'store\.steampowered\.com/app/(\d+)', re.IGNORECASE)
-_EPIC_PATH_RE = re.compile(r'store\.epicgames\.com/(?:[a-z]{2}(?:-[A-Z]{2})?/)?((?:p|product)/[^/?#]+)', re.IGNORECASE)
-
-_REDDIT_BRACKET_RE = re.compile(r"\[([^\]]+)\]")
-_REDDIT_NOISE_LEADING = re.compile(r"^(\[[^\]]{1,30}\]\s*)+", re.IGNORECASE)
-_REDDIT_NOISE_TRAILING = re.compile(r"[\(\[][^\)\]]{1,50}[\)\]]\s*$", re.IGNORECASE)
-
-_REDDIT_PLATFORM_ALIASES: dict[str, str] = {
-    "steam": "steam", "egs": "epic", "epic": "epic", "epic games": "epic",
-    "epic games store": "epic", "gog": "gog", "ubisoft": "ubisoft",
-    "origin": "origin", "ea": "origin", "humble": "humble",
-    "humble bundle": "humble", "itch.io": "itchio", "itchio": "itchio",
-    "xbox": "xbox", "xbox one": "xbox", "xbox series x|s": "xbox",
-    "xbox series x": "xbox", "xbox series": "xbox",
-    "playstation": "playstation", "ps4": "playstation",
-    "ps5": "playstation", "psn": "playstation",
-    "nintendo": "nintendo", "switch": "nintendo",
-    "battle.net": "other", "blizzard": "other",
-    "drm-free": "other", "drm free": "other",
-    "multiple stores": "other",
-}
+GAMERPOWER_API_URL = "https://www.gamerpower.com/api/giveaways"
+FREESTUFFGG_WEBHOOK_SECRET = os.getenv("FREESTUFFGG_WEBHOOK_SECRET", "")
 
 _TITLE_NOISE_RE = re.compile(r"^\((?:game|dlc|loot|beta|early access)\)\s*", re.IGNORECASE)
 
@@ -55,13 +30,6 @@ def _clean_title_noise(title: str) -> str:
     """Strip common GamerPower prefixes like '(Game)', '(DLC)', etc."""
     return _TITLE_NOISE_RE.sub("", title).strip() or title
 
-
-def _clean_reddit_title(raw: str) -> str:
-    """Strip [Platform] [Type] tags and trailing (notes) from Reddit titles."""
-    title = raw.strip()
-    title = _REDDIT_NOISE_LEADING.sub("", title).strip()
-    title = _REDDIT_NOISE_TRAILING.sub("", title).strip()
-    return title or raw.strip()
 
 _GAMERPOWER_PLATFORM_MAP: dict[str, str] = {
     "epic games store": "epic",
@@ -80,6 +48,24 @@ _GAMERPOWER_PLATFORM_MAP: dict[str, str] = {
     "ps4":              "playstation",
     "ps5":              "playstation",
     "nintendo switch":  "nintendo",
+}
+
+_FREESTUFFGG_PLATFORM_MAP: dict[str, str] = {
+    "steam":       "steam",
+    "epic":        "epic",
+    "epic games":  "epic",
+    "gog":         "gog",
+    "humble":      "humble",
+    "humble bundle": "humble",
+    "ubisoft":     "ubisoft",
+    "itch":        "itchio",
+    "itch.io":     "itchio",
+    "xbox":        "xbox",
+    "microsoft":   "xbox",
+    "playstation": "playstation",
+    "psn":         "playstation",
+    "nintendo":    "nintendo",
+    "switch":      "nintendo",
 }
 
 PLATFORM_COLORS = {
@@ -149,7 +135,6 @@ PLATFORM_ICONS = {
     "other":       "https://img.icons8.com/color/256/controller.png",
 }
 
-
 _GP_TYPE_TO_CATEGORY: dict[str, str] = {
     "game":          "free_to_keep",
     "loot":          "loot",
@@ -162,12 +147,10 @@ _GP_TYPE_TO_CATEGORY: dict[str, str] = {
 def classify_item(title: str, flair: str | None, platform: str, is_free_weekend: bool, *, gp_type: str | None = None) -> str:
     if is_free_weekend:
         return "free_weekend"
-    # Use GamerPower's own type as primary signal
     if gp_type:
         mapped = _GP_TYPE_TO_CATEGORY.get(gp_type.lower())
         if mapped:
             return mapped
-    # Keyword heuristics as fallback
     text = (title + " " + (flair or "")).lower()
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(kw in text for kw in keywords):
@@ -222,22 +205,19 @@ def build_game_embed(
     color = int(embed_color.lstrip("#"), 16) if embed_color else PLATFORM_COLORS.get(platform, 0x5865F2)
     embed = discord.Embed(title=title, url=url, color=color)
 
-    # Platform icon as thumbnail (large, top-right) instead of tiny author icon
     icon = PLATFORM_ICONS.get(platform)
     if icon:
         embed.set_author(name=PLATFORM_LABELS.get(platform, platform.title()))
         embed.set_thumbnail(url=icon)
 
-    # Sanitize N/A-like prices
     if original_price and original_price.upper() in ("N/A", "FREE", "UNKNOWN"):
         original_price = ""
 
-    # Description block: game description, then price + expiry
     desc_lines = []
     if show_description and description:
         truncated = description[:200] + ("…" if len(description) > 200 else "")
         desc_lines.append(truncated)
-        desc_lines.append("")  # blank line separator
+        desc_lines.append("")
     if show_price:
         price_str = f"~~{original_price}~~ -> **FREE**" if original_price else "**FREE**"
         desc_lines.append(price_str)
@@ -251,14 +231,11 @@ def build_game_embed(
     if desc_lines:
         embed.description = "\n".join(desc_lines)
 
-    # Secondary inline fields
     if show_category:
         embed.add_field(name="Category", value=CATEGORY_LABELS.get(category, category), inline=True)
     if show_platform:
         embed.add_field(name="Platform", value=PLATFORM_LABELS.get(platform, platform.title()), inline=True)
 
-    # Links field -- browser link only; steam:// and other custom protocols
-    # are not supported by Discord in embed markdown or button URLs.
     if url:
         embed.add_field(name="Links", value=f"[🌐 Open in Browser]({url})", inline=False)
 
@@ -267,18 +244,19 @@ def build_game_embed(
     embed.set_footer(text=f"{PLATFORM_LABELS.get(platform, platform.title())} • Free Games Bot")
     return embed
 
+
 PLATFORM_EMOJIS = {
-    "steam": "\U0001f3ae",      # controller
-    "epic": "\U0001f3f0",       # castle
-    "gog": "\U0001f4bf",        # disc
-    "ubisoft": "\U0001f5a5",    # desktop
-    "origin": "\U0001f3c3",     # runner
-    "humble": "\U00002764",     # heart
-    "itchio": "\U0001f3b2",     # game die
-    "xbox": "\U0001f7e2",        # green circle
-    "playstation": "\U0001f535", # blue circle
-    "nintendo": "\U0001f534",    # red circle
-    "other": "\U0001f4e6",       # package
+    "steam": "\U0001f3ae",
+    "epic": "\U0001f3f0",
+    "gog": "\U0001f4bf",
+    "ubisoft": "\U0001f5a5",
+    "origin": "\U0001f3c3",
+    "humble": "\U00002764",
+    "itchio": "\U0001f3b2",
+    "xbox": "\U0001f7e2",
+    "playstation": "\U0001f535",
+    "nintendo": "\U0001f534",
+    "other": "\U0001f4e6",
 }
 
 
@@ -343,16 +321,16 @@ class FreeStuff(commands.Cog):
         self.bot = bot
         self._cache: dict[str, dict] = {}
         self._session: aiohttp.ClientSession | None = None
-        self._send_semaphore = asyncio.Semaphore(1)
 
     async def cog_load(self):
         await self.refresh_cache()
         self._session = aiohttp.ClientSession()
-        self._seeded = False
-        self.check_loop.start()
+        self._gamerpower_task.start()
+        self._cleanup_seen_task.start()
 
     async def cog_unload(self):
-        self.check_loop.cancel()
+        self._gamerpower_task.cancel()
+        self._cleanup_seen_task.cancel()
         if self._session:
             await self._session.close()
 
@@ -402,17 +380,23 @@ class FreeStuff(commands.Cog):
         channel = interaction.guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
         platforms = json.loads(cfg.get("platforms", "[]"))
         enabled = bool(cfg.get("enabled"))
+        freestuffgg_on = bool(cfg.get("freestuffgg_enabled", 1))
+        gamerpower_on = bool(cfg.get("use_gamerpower", 1))
+        webhook_configured = bool(FREESTUFFGG_WEBHOOK_SECRET)
 
         embed = discord.Embed(title="Free Stuff Config", color=0x43B581)
-        reddit_on = bool(cfg.get("use_reddit", 0))
-
         embed.add_field(name="Enabled", value="Yes" if enabled else "No", inline=True)
         embed.add_field(name="Channel", value=channel.mention if channel else "Not set", inline=True)
-        embed.add_field(name="Reddit Source", value="\u2705 On" if reddit_on else "\u274c Off", inline=True)
+        embed.add_field(
+            name="FreeStuff.gg",
+            value=("\u2705 On" if freestuffgg_on else "\u274c Off") +
+                  (" (webhook configured)" if webhook_configured else " ⚠️ webhook secret not set"),
+            inline=True,
+        )
+        embed.add_field(name="GamerPower", value="\u2705 On" if gamerpower_on else "\u274c Off", inline=True)
 
         platform_lines = []
         for p in ALL_PLATFORMS:
-            status = "enabled" if p in platforms else "disabled"
             emoji = PLATFORM_EMOJIS.get(p, "")
             label = PLATFORM_LABELS.get(p, p)
             indicator = "\u2705" if p in platforms else "\u274c"
@@ -467,26 +451,6 @@ class FreeStuff(commands.Cog):
             ephemeral=True,
         )
 
-    @freestuff_group.command(name="reddit", description="Toggle r/FreeGameFindings as an additional source")
-    async def freestuff_reddit(self, interaction: discord.Interaction):
-        guild_id = str(interaction.guild_id)
-        cfg = await db.get_freestuff_config(guild_id)
-        if not cfg:
-            await interaction.response.send_message(
-                "Free game notifications are not set up. Use `/freestuff setup <channel>` first.",
-                ephemeral=True,
-            )
-            return
-        current = bool(cfg.get("use_reddit", 0))
-        new_val = 0 if current else 1
-        await db.upsert_freestuff_config(guild_id, use_reddit=new_val)
-        await self.refresh_cache()
-        state = "enabled" if new_val else "disabled"
-        await interaction.response.send_message(
-            f"Reddit source (r/FreeGameFindings) **{state}**.",
-            ephemeral=True,
-        )
-
     @freestuff_group.command(name="reset", description="Re-announce all current freebies to this server")
     async def freestuff_reset(self, interaction: discord.Interaction):
         view = _ResetConfirmView()
@@ -509,23 +473,14 @@ class FreeStuff(commands.Cog):
             content=f"Re-announced **{count}** game(s) to this server."
         )
 
-    @freestuff_group.command(name="check", description="Manually check for free games now")
+    @freestuff_group.command(name="check", description="Manually trigger a GamerPower check now")
     async def freestuff_check(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-
-        # Fetch from sources (adds new ones to DB, notifies guilds)
-        new_games = await self._fetch_all()
-
-        # Always show recent games from the DB so the user sees what's tracked
+        await self._poll_gamerpower()
         recent = await db.get_free_games(limit=10)
-
-        if new_games:
-            msg = f"Found **{len(new_games)}** new free game(s)! Notifications sent.\n\n"
-        else:
-            msg = "No *new* free games found right now.\n\n"
-
+        msg = "GamerPower check complete — new games (if any) have been announced.\n\n"
         if recent:
-            embed = discord.Embed(title="Recent Free Games", color=0x43B581)
+            embed = discord.Embed(title="Recent Free Games (GamerPower)", color=0x43B581)
             for game in recent[:10]:
                 platform = game.get("platform", "?").title()
                 price = game.get("original_price") or "Free"
@@ -537,69 +492,325 @@ class FreeStuff(commands.Cog):
                 )
             await interaction.followup.send(content=msg, embed=embed)
         else:
-            msg += "No free games have been discovered yet. The bot checks every 20 minutes."
-            await interaction.followup.send(msg)
+            await interaction.followup.send(msg + "No free games discovered yet.")
 
-    # --- Background loop ---
+    # --- Background tasks ---
 
-    @tasks.loop(minutes=20)
-    async def check_loop(self):
+    @tasks.loop(minutes=30)
+    async def _gamerpower_task(self):
         if self.bot.is_closed():
             return
         try:
-            await self._fetch_all()
+            await self._poll_gamerpower()
         except Exception:
-            log.exception("Error in freestuff check loop")
+            log.exception("Error in GamerPower poll task")
 
-    @check_loop.before_loop
-    async def before_check_loop(self):
+    @_gamerpower_task.before_loop
+    async def _before_gamerpower_task(self):
         await self.bot.wait_until_ready()
 
-    async def _fetch_all(self) -> list[dict]:
-        """Fetch from all sources, dedup, notify guilds. Returns list of new games."""
-        new_games = []
+    @tasks.loop(hours=24)
+    async def _cleanup_seen_task(self):
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        deleted = await db.cleanup_expired_seen(cutoff)
+        log.info("FreeStuff: cleaned up %d expired seen entries (cutoff=%s)", deleted, cutoff)
 
-        # Only hit each source if at least one guild has it enabled
-        any_epic = any(cfg.get("use_epic_api", 1) for cfg in self._cache.values())
-        if any_epic:
-            new_games.extend(await self._fetch_epic())
-        else:
-            log.debug("Epic: skipped -- no guilds have use_epic_api enabled")
+    @_cleanup_seen_task.before_loop
+    async def _before_cleanup_seen_task(self):
+        await self.bot.wait_until_ready()
 
-        any_gamerpower = any(cfg.get("use_gamerpower", 1) for cfg in self._cache.values())
-        if any_gamerpower:
-            new_games.extend(await self._fetch_gamerpower())
-        else:
+    # --- FreeStuff.gg webhook handler ---
+
+    async def handle_freestuffgg_event(self, data: dict):
+        """Called by the dashboard webhook route after HMAC verification."""
+        game_id = str(data.get("id", ""))
+        title = data.get("title") or data.get("name") or ""
+        url = data.get("url") or data.get("store_url") or ""
+        thumbnail = data.get("thumbnail") or data.get("image") or ""
+        price_original = str(data.get("org_price") or data.get("original_price") or "")
+        expires_at_raw = data.get("until") or data.get("expires_at") or None
+        platform_raw = (data.get("store") or data.get("platform") or "other").lower()
+
+        if not game_id or not title:
+            log.warning("FreeStuff.gg: received event with missing id or title, skipping")
+            return
+
+        # Map FreeStuff.gg store names to our platform keys
+        platform = _FREESTUFFGG_PLATFORM_MAP.get(platform_raw, "other")
+        if platform == "other" and url:
+            url_platform = _detect_platform_from_url(url)
+            if url_platform:
+                platform = url_platform
+
+        category = classify_item(title, None, platform, False)
+
+        # Normalize expires_at to ISO string
+        expires_iso: str | None = None
+        if expires_at_raw is not None:
+            try:
+                if isinstance(expires_at_raw, (int, float)):
+                    expires_iso = datetime.fromtimestamp(expires_at_raw, tz=timezone.utc).isoformat()
+                else:
+                    expires_iso = str(expires_at_raw)
+            except Exception:
+                pass
+
+        # Sanitize price
+        if price_original.upper() in ("N/A", "FREE", "UNKNOWN", "0", "0.00"):
+            price_original = ""
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # Insert into free_games history
+        await db.add_free_game(
+            title=title, url=url, platform=platform,
+            image_url=thumbnail, original_price=price_original,
+            source="freestuffgg", category=category,
+        )
+
+        configs = await db.get_all_freestuff_configs()
+
+        async def _send_to_guild(cfg: dict):
+            guild_id = cfg["guild_id"]
+            if not cfg.get("freestuffgg_enabled", 1):
+                return
+            if await db.is_game_seen(guild_id, "freestuffgg", game_id):
+                return
+
+            guild = self.bot.get_guild(int(guild_id))
+            if not guild:
+                return
+            channel = guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
+            if not channel:
+                return
+
+            allowed_platforms = json.loads(cfg.get("platforms", "[]"))
+            guild_filters = json.loads(cfg.get("content_filters") or
+                '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
+
+            if allowed_platforms and platform not in allowed_platforms:
+                return
+            if category not in guild_filters:
+                return
+
+            mention_parts = []
+            if cfg.get("mention_role_id"):
+                mention_parts.append(f"<@&{cfg['mention_role_id']}>")
+            platform_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
+            if platform in platform_roles:
+                mention_parts.append(f"<@&{platform_roles[platform]}>")
+            content = " ".join(mention_parts) or None
+
+            embed = build_game_embed(
+                title=title, url=url, platform=platform,
+                image_url=thumbnail,
+                original_price=price_original,
+                end_date=expires_iso or "",
+                category=category,
+                embed_color=cfg.get("embed_color") or None,
+                show_price=bool(cfg.get("embed_show_price", 1)),
+                show_category=bool(cfg.get("embed_show_category", 1)),
+                show_platform=bool(cfg.get("embed_show_platform", 1)),
+                show_expiry=bool(cfg.get("embed_show_expiry", 1)),
+                show_image=bool(cfg.get("embed_show_image", 1)),
+                description="",
+                show_description=bool(cfg.get("embed_show_description", 1)),
+                show_client_link=bool(cfg.get("embed_show_client_link", 1)),
+                store_url=url,
+                clean_titles=bool(cfg.get("embed_clean_titles", 0)),
+            )
+            embed.timestamp = datetime.now(timezone.utc)
+
+            try:
+                await channel.send(content=content, embed=embed)
+                await db.mark_game_seen(guild_id, "freestuffgg", game_id, now_iso, expires_iso)
+                log.info("FreeStuff.gg: announced %r to guild %s", title, guild_id)
+            except discord.HTTPException as e:
+                log.warning("FreeStuff.gg: failed to send to guild %s: %s", guild_id, e)
+
+        await asyncio.gather(*[_send_to_guild(cfg) for cfg in configs], return_exceptions=True)
+        log.info("FreeStuff.gg: processed event for %r (game_id=%s)", title, game_id)
+
+    # --- GamerPower polling ---
+
+    async def _poll_gamerpower(self):
+        """Fetch GamerPower and announce new games to all guilds concurrently."""
+        configs = await db.get_all_freestuff_configs()
+        if not configs:
+            return
+
+        any_gp = any(cfg.get("use_gamerpower", 1) for cfg in configs)
+        if not any_gp:
             log.debug("GamerPower: skipped -- no guilds have use_gamerpower enabled")
+            return
 
-        any_reddit = any(cfg.get("use_reddit") for cfg in self._cache.values())
-        if any_reddit:
-            new_games.extend(await self._fetch_reddit())
-        else:
-            log.debug("Reddit: skipped -- no guilds have use_reddit enabled")
+        games = await self._fetch_gamerpower()
+        if not games:
+            return
 
-        any_gg_deals = any(cfg.get("use_gg_deals", 0) for cfg in self._cache.values())
-        if any_gg_deals:
-            await self._enrich_steam_prices(new_games)
-        else:
-            log.debug("GG.deals: skipped -- no guilds have use_gg_deals enabled")
+        now_iso = datetime.now(timezone.utc).isoformat()
 
-        if not self._seeded:
-            # First run after startup: silently seed the DB so existing freebies
-            # are not treated as new. No notifications sent.
-            self._seeded = True
-            log.info("FreeStuff: seeded %d game(s) on startup -- no notifications sent.", len(new_games))
-            return []
+        async def _send_game_to_guild(cfg: dict, game: dict):
+            guild_id = cfg["guild_id"]
+            if not cfg.get("use_gamerpower", 1):
+                return
+            game_id = game["game_id"]
+            if await db.is_game_seen(guild_id, "gamerpower", game_id):
+                return
 
-        if new_games:
-            await self._notify_guilds(new_games)
+            guild = self.bot.get_guild(int(guild_id))
+            if not guild:
+                return
+            channel = guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
+            if not channel:
+                return
 
-        await self._handle_pending_resets()
+            allowed_platforms = json.loads(cfg.get("platforms", "[]"))
+            guild_filters = json.loads(cfg.get("content_filters") or
+                '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
 
-        return new_games
+            if allowed_platforms and game["platform"] not in allowed_platforms:
+                return
+            if game.get("category", "free_to_keep") not in guild_filters:
+                return
+
+            mention_parts = []
+            if cfg.get("mention_role_id"):
+                mention_parts.append(f"<@&{cfg['mention_role_id']}>")
+            platform_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
+            if game["platform"] in platform_roles:
+                mention_parts.append(f"<@&{platform_roles[game['platform']]}>")
+            content = " ".join(mention_parts) or None
+
+            link_type = cfg.get("link_type", "store")
+            game_url = game["url"]
+            if link_type == "gamerpower" and game.get("source_url"):
+                game_url = game["source_url"]
+
+            embed = build_game_embed(
+                title=game["title"], url=game_url, platform=game["platform"],
+                image_url=game.get("image_url", ""),
+                original_price=game.get("original_price", ""),
+                end_date=game.get("end_date", ""),
+                category=game.get("category", "free_to_keep"),
+                embed_color=cfg.get("embed_color") or None,
+                show_price=bool(cfg.get("embed_show_price", 1)),
+                show_category=bool(cfg.get("embed_show_category", 1)),
+                show_platform=bool(cfg.get("embed_show_platform", 1)),
+                show_expiry=bool(cfg.get("embed_show_expiry", 1)),
+                show_image=bool(cfg.get("embed_show_image", 1)),
+                description=game.get("description", ""),
+                show_description=bool(cfg.get("embed_show_description", 1)),
+                show_client_link=bool(cfg.get("embed_show_client_link", 1)),
+                store_url=game.get("url", ""),
+                clean_titles=bool(cfg.get("embed_clean_titles", 0)),
+            )
+            embed.timestamp = datetime.now(timezone.utc)
+
+            try:
+                await channel.send(content=content, embed=embed)
+                await db.mark_game_seen(guild_id, "gamerpower", game_id, now_iso, game.get("end_date") or None)
+                log.info("GamerPower: announced %r to guild %s", game["title"], guild_id)
+            except discord.HTTPException as e:
+                log.warning("GamerPower: failed to send to guild %s: %s", guild_id, e)
+
+        send_tasks = [
+            _send_game_to_guild(cfg, game)
+            for cfg in configs
+            for game in games
+        ]
+        await asyncio.gather(*send_tasks, return_exceptions=True)
+
+    async def _fetch_gamerpower(self) -> list[dict]:
+        """Fetch current GamerPower giveaways. Returns list of game dicts."""
+        games = []
+        try:
+            headers = {"User-Agent": "DiscordBot/1.0"}
+            async with self._session.get(GAMERPOWER_API_URL, headers=headers,
+                                         timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                log.debug("GamerPower API response status: %d", resp.status)
+                if resp.status != 200:
+                    return []
+                items = await resp.json()
+
+            log.debug("GamerPower: %d items returned", len(items))
+            for item in items:
+                title = _clean_title_noise((item.get("title") or "").strip())
+                gp_url = item.get("open_giveaway_url") or ""
+                game_id = str(item.get("id", ""))
+                if not title or not gp_url or not game_id:
+                    log.debug("GamerPower: skipping item -- missing title, URL, or id")
+                    continue
+
+                # Skip mobile-only (no PC/store platform)
+                platforms_str = (item.get("platforms") or "").lower()
+                pc_stores = ("pc", "steam", "epic", "gog", "humble", "ubisoft", "origin", "drm-free", "itch",
+                             "xbox", "playstation", "ps4", "ps5", "nintendo", "switch")
+                if not any(p in platforms_str for p in pc_stores):
+                    log.debug("GamerPower: skipping %r -- mobile-only (platforms=%r)", title, platforms_str)
+                    continue
+
+                # Skip past end_date
+                end_date_str = item.get("end_date") or ""
+                end_date_display = ""
+                if end_date_str and end_date_str != "N/A":
+                    try:
+                        end_dt = datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                        if end_dt < datetime.now(timezone.utc):
+                            log.debug("GamerPower: skipping %r -- expired (%s)", title, end_date_str)
+                            continue
+                        end_date_display = end_date_str[:10]
+                    except Exception:
+                        pass
+
+                # Detect platform from platforms field
+                platform = "other"
+                for key, val in _GAMERPOWER_PLATFORM_MAP.items():
+                    if key in platforms_str:
+                        platform = val
+                        break
+
+                image_url = item.get("image") or item.get("thumbnail") or ""
+                original_price = item.get("worth") or ""
+                if original_price.upper() in ("N/A", "FREE", "UNKNOWN"):
+                    original_price = ""
+                category = classify_item(title, platforms_str, platform, False, gp_type=item.get("type"))
+                description = (item.get("description") or "")[:300]
+
+                log.debug("GamerPower: %r -- gp_type=%s, platform=%s, category=%s", title, item.get("type"), platform, category)
+
+                # Insert into free_games history (for dashboard display / reset)
+                await db.add_free_game(
+                    title=title, url=gp_url, platform=platform,
+                    image_url=image_url, original_price=original_price,
+                    source="gamerpower", category=category,
+                    source_url=gp_url, description=description,
+                    gp_type=item.get("type"),
+                )
+
+                games.append({
+                    "game_id":       game_id,
+                    "title":         title,
+                    "url":           gp_url,
+                    "platform":      platform,
+                    "image_url":     image_url,
+                    "original_price": original_price,
+                    "end_date":      end_date_display,
+                    "category":      category,
+                    "source":        "gamerpower",
+                    "source_url":    gp_url,
+                    "description":   description,
+                })
+
+        except Exception:
+            log.exception("Error fetching GamerPower giveaways")
+        log.debug("GamerPower: fetch complete -- %d item(s)", len(games))
+        return games
+
+    # --- Pending resets (dashboard / slash command) ---
 
     async def _handle_pending_resets(self) -> int:
-        """Re-announce all known games to guilds with pending_reset=1. Returns count sent."""
+        """Re-announce all known GamerPower games to guilds with pending_reset=1. Returns count sent."""
         configs = await db.get_all_freestuff_configs()
         pending = [c for c in configs if c.get("pending_reset")]
         if not pending:
@@ -607,15 +818,12 @@ class FreeStuff(commands.Cog):
 
         all_games = await db.get_free_games(limit=200)
         if not all_games:
-            # Clear flags even if no games
             for cfg in pending:
                 await db.upsert_freestuff_config(cfg["guild_id"], pending_reset=0)
             return 0
 
-        # Convert DB rows to the dict format _notify_guilds expects
         games = []
         for g in all_games:
-            # Re-classify using stored gp_type so resets use latest classification logic
             stored_gp_type = g.get("gp_type")
             category = classify_item(g["title"], None, g.get("platform", "other"), False, gp_type=stored_gp_type)
             games.append({
@@ -647,11 +855,7 @@ class FreeStuff(commands.Cog):
                     continue
                 if game.get("category", "free_to_keep") not in guild_filters:
                     continue
-                if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
-                    continue
                 if not cfg.get("use_gamerpower", 1) and game.get("source") == "gamerpower":
-                    continue
-                if not cfg.get("use_reddit", 0) and game.get("source") == "reddit":
                     continue
 
                 link_type = cfg.get("link_type", "store")
@@ -686,425 +890,15 @@ class FreeStuff(commands.Cog):
                     clean_titles=bool(cfg.get("embed_clean_titles", 0)),
                 )
                 embed.timestamp = datetime.now(timezone.utc)
-                await self._send_with_ratelimit(channel, embed, content=content)
-                count += 1
+                try:
+                    await channel.send(content=content, embed=embed)
+                    count += 1
+                except discord.HTTPException as e:
+                    log.warning("Failed to re-announce to %s: %s", channel.id, e)
 
             await db.upsert_freestuff_config(cfg["guild_id"], pending_reset=0)
 
         return count
-
-    async def _fetch_epic(self) -> list[dict]:
-        new_games = []
-        try:
-            async with self._session.get(EPIC_API, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                log.debug("Epic API response status: %d", resp.status)
-                if resp.status != 200:
-                    return []
-                data = await resp.json()
-
-            elements = data.get("data", {}).get("Catalog", {}).get("searchStore", {}).get("elements", [])
-            log.debug("Epic: %d elements returned", len(elements))
-            for elem in elements:
-                title = elem.get("title", "")
-                offers = elem.get("promotions")
-                if not offers:
-                    log.debug("Epic: skipping %r -- no promotions", title)
-                    continue
-
-                promo_list = offers.get("promotionalOffers", [])
-                for promo_group in promo_list:
-                    for offer in promo_group.get("promotionalOffers", []):
-                        discount_pct = offer.get("discountSetting", {}).get("discountPercentage", 0)
-                        if discount_pct != 0:
-                            log.debug("Epic: skipping %r -- discount %d%% (not free)", title, discount_pct)
-                            continue
-
-                        start_date_str = offer.get("startDate", "")
-                        if start_date_str:
-                            try:
-                                start_dt = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
-                                if start_dt > datetime.now(timezone.utc):
-                                    log.debug("Epic: skipping %r -- not live yet (starts %s)", title, start_date_str)
-                                    continue  # offer not live yet -- skip to avoid blocking future send
-                            except ValueError:
-                                pass
-
-                        slug = elem.get("catalogNs", {}).get("mappings", [{}])
-                        page_slug = slug[0].get("pageSlug", "") if slug else ""
-                        url = f"https://store.epicgames.com/p/{page_slug}" if page_slug else ""
-                        if not url:
-                            url = f"https://store.epicgames.com/browse?q={title.replace(' ', '+')}"
-                        log.debug("Epic: %r -> URL %s (slug=%r)", title, url, page_slug)
-
-                        image_url = ""
-                        for img in elem.get("keyImages", []):
-                            if img.get("type") in ("OfferImageWide", "DieselStoreFrontWide", "Thumbnail"):
-                                image_url = img.get("url", "")
-                                break
-
-                        price_info = (elem.get("price") or {}).get("totalPrice", {})
-                        original = (price_info.get("fmtPrice") or {}).get("originalPrice", "")
-
-                        # Detect free weekend: end date within 4 days
-                        end_date_str = offer.get("endDate", "")
-                        is_free_weekend = False
-                        if end_date_str:
-                            try:
-                                end_dt = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
-                                if end_dt < datetime.now(timezone.utc):
-                                    log.debug("Epic: skipping %r -- already expired (%s)", title, end_date_str)
-                                    continue  # already expired
-                                delta = end_dt - datetime.now(timezone.utc)
-                                is_free_weekend = 0 < delta.days <= 4
-                            except Exception as e:
-                                log.debug("Skipping malformed Epic item: %s", e)
-
-                        category = classify_item(title, None, "epic", is_free_weekend)
-                        end_date_display = end_date_str[:10] if end_date_str else ""
-
-                        log.debug("Epic: %r -- category=%s, end=%s, free_weekend=%s", title, category, end_date_display, is_free_weekend)
-                        game_id = await db.add_free_game(
-                            title=title, url=url, platform="epic",
-                            image_url=image_url, original_price=original, source="epic",
-                            category=category,
-                        )
-                        if game_id:
-                            log.debug("Epic: NEW game added -- %r (id=%s)", title, game_id)
-                            new_games.append({
-                                "title": title, "url": url, "platform": "epic",
-                                "image_url": image_url, "original_price": original,
-                                "end_date": end_date_display, "category": category,
-                                "source": "epic", "source_url": "", "description": "",
-                            })
-                        else:
-                            log.debug("Epic: already known -- %r", title)
-        except Exception:
-            log.exception("Error fetching Epic free games")
-        log.debug("Epic: fetch complete -- %d new game(s)", len(new_games))
-        return new_games
-
-    async def _fetch_gamerpower(self) -> list[dict]:
-        new_games = []
-        try:
-            headers = {"User-Agent": "DiscordBot/1.0"}
-            async with self._session.get(GAMERPOWER_API_URL, headers=headers,
-                                         timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                log.debug("GamerPower API response status: %d", resp.status)
-                if resp.status != 200:
-                    return []
-                items = await resp.json()
-
-            log.debug("GamerPower: %d items returned", len(items))
-            for item in items:
-                title = _clean_title_noise((item.get("title") or "").strip())
-                gp_url = item.get("open_giveaway_url") or ""
-                if not title or not gp_url:
-                    log.debug("GamerPower: skipping item -- missing title or URL")
-                    continue
-                log.debug("GamerPower: processing %r (gp_url=%s)", title, gp_url)
-
-                # Skip mobile-only (no PC/store platform)
-                platforms_str = (item.get("platforms") or "").lower()
-                pc_stores = ("pc", "steam", "epic", "gog", "humble", "ubisoft", "origin", "drm-free", "itch",
-                             "xbox", "playstation", "ps4", "ps5", "nintendo", "switch")
-                if not any(p in platforms_str for p in pc_stores):
-                    log.debug("GamerPower: skipping %r -- mobile-only (platforms=%r)", title, platforms_str)
-                    continue
-
-                # Skip items with a past end_date
-                end_date_str = item.get("end_date") or ""
-                end_date_display = ""
-                if end_date_str and end_date_str != "N/A":
-                    try:
-                        end_dt = datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-                        if end_dt < datetime.now(timezone.utc):
-                            log.debug("GamerPower: skipping %r -- expired (%s)", title, end_date_str)
-                            continue
-                        end_date_display = end_date_str[:10]
-                    except Exception:
-                        pass
-
-                # Detect platform from platforms field
-                platform = "other"
-                for key, val in _GAMERPOWER_PLATFORM_MAP.items():
-                    if key in platforms_str:
-                        platform = val
-                        break
-
-                # Follow redirects to get direct store URL
-                # GamerPower requires a browser User-Agent to honour redirects
-                url = gp_url
-                try:
-                    _hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-                    async with self._session.get(gp_url, allow_redirects=True,
-                                                 headers=_hdrs,
-                                                 timeout=aiohttp.ClientTimeout(total=5)) as r:
-                        if str(r.url) != gp_url:
-                            url = str(r.url)
-                            log.debug("GamerPower: resolved %s -> %s", gp_url, url)
-                        else:
-                            log.debug("GamerPower: no redirect for %s", gp_url)
-                except Exception:
-                    log.debug("GamerPower: redirect failed for %s", gp_url)
-                    pass  # fall back to gamerpower URL
-
-                # Override platform based on actual redirect URL
-                url_platform = _detect_platform_from_url(url)
-                if url_platform:
-                    log.debug("GamerPower: %r -- platform override %s -> %s (from URL)", title, platform, url_platform)
-                    platform = url_platform
-
-                image_url = item.get("image") or item.get("thumbnail") or ""
-                original_price = item.get("worth") or ""
-                if original_price.upper() in ("N/A", "FREE", "UNKNOWN"):
-                    original_price = ""
-                category = classify_item(title, platforms_str, platform, False, gp_type=item.get("type"))
-                description = (item.get("description") or "")[:300]
-                source_url = gp_url  # original gamerpower URL before redirect
-
-                log.debug("GamerPower: %r -- gp_type=%s, platform=%s, category=%s", title, item.get("type"), platform, category)
-                game_id = await db.add_free_game(
-                    title=title, url=url, platform=platform,
-                    image_url=image_url, original_price=original_price,
-                    source="gamerpower", category=category,
-                    source_url=source_url, description=description,
-                    gp_type=item.get("type"),
-                )
-                if game_id:
-                    log.debug("GamerPower: NEW game added -- %r (id=%s)", title, game_id)
-                    new_games.append({
-                        "title": title, "url": url, "platform": platform,
-                        "image_url": image_url, "original_price": original_price,
-                        "end_date": end_date_display, "category": category,
-                        "source": "gamerpower", "source_url": source_url, "description": description,
-                    })
-                else:
-                    log.debug("GamerPower: already known -- %r", title)
-        except Exception:
-            log.exception("Error fetching GamerPower giveaways")
-        log.debug("GamerPower: fetch complete -- %d new game(s)", len(new_games))
-        return new_games
-
-    async def _fetch_reddit(self) -> list[dict]:
-        """Fetch free game posts from r/FreeGameFindings."""
-        new_games = []
-        try:
-            headers = {"User-Agent": "DiscordBot/1.0"}
-            async with self._session.get(REDDIT_URL, headers=headers,
-                                         timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                log.debug("Reddit API response status: %d", resp.status)
-                if resp.status != 200:
-                    return []
-                data = await resp.json()
-
-            posts = data.get("data", {}).get("children", [])
-            log.debug("Reddit: %d posts returned", len(posts))
-            for post in posts:
-                pdata = post.get("data", {})
-                raw_title = pdata.get("title", "")
-                title = _clean_title_noise(_clean_reddit_title(raw_title))
-                url = pdata.get("url", "")
-                if not url or pdata.get("is_self"):
-                    log.debug("Reddit: skipping %r -- self-post or no URL", title)
-                    continue
-
-                # Parse platform from bracket tags in title
-                brackets = _REDDIT_BRACKET_RE.findall(raw_title)
-                platform = "other"
-                for bracket in brackets:
-                    for token in re.split(r"[/,]", bracket):
-                        mapped = _REDDIT_PLATFORM_ALIASES.get(token.strip().lower())
-                        if mapped:
-                            platform = mapped
-                            break
-                    if platform != "other":
-                        break
-
-                # Override platform from the actual URL
-                url_platform = _detect_platform_from_url(url)
-                if url_platform:
-                    log.debug("Reddit: %r -- platform override %s -> %s (from URL)", title, platform, url_platform)
-                    platform = url_platform
-
-                richtext = pdata.get("link_flair_richtext") or []
-                flair = pdata.get("link_flair_text") or (richtext[0].get("t", "") if richtext else "")
-                category = classify_item(title, flair, platform, False)
-                image_url = pdata.get("thumbnail", "")
-                if not image_url.startswith("http"):
-                    image_url = ""
-
-                log.debug("Reddit: %r -- platform=%s, category=%s, flair=%s",
-                          title, platform, category, flair.encode("ascii", "replace").decode())
-                game_id = await db.add_free_game(
-                    title=title, url=url, platform=platform,
-                    source="reddit", category=category,
-                )
-                if game_id:
-                    log.debug("Reddit: NEW game added -- %r (id=%s)", title, game_id)
-                    new_games.append({
-                        "title": title, "url": url, "platform": platform,
-                        "image_url": image_url, "original_price": "",
-                        "end_date": "", "category": category,
-                        "source": "reddit", "source_url": "", "description": "",
-                    })
-                else:
-                    log.debug("Reddit: already known -- %r", title)
-        except Exception:
-            log.exception("Error fetching Reddit free games")
-        log.debug("Reddit: fetch complete -- %d new game(s)", len(new_games))
-        return new_games
-
-    async def _enrich_steam_prices(self, games: list[dict]) -> None:
-        """Fill original_price from GG.deals Prices API for Steam games with a Steam App ID."""
-        if not GG_DEALS_API_KEY:
-            log.debug("Steam price enrichment skipped -- no GG_DEALS_API_KEY")
-            return
-
-        app_id_map: dict[str, dict] = {}
-        for game in games:
-            if game["platform"] != "steam":
-                continue
-            if game.get("original_price"):
-                log.debug("Steam prices: skipping %r -- already has price", game["title"])
-                continue
-            search_str = game.get("url", "") + game.get("_desc", "")
-            m = _STEAM_APP_RE.search(search_str)
-            if m:
-                app_id_map[m.group(1)] = game
-            else:
-                log.debug("Steam prices: skipping %r -- no Steam app ID in URL", game["title"])
-
-        if not app_id_map:
-            log.debug("Steam prices: no games to enrich")
-            return
-        log.debug("Steam prices: enriching %d game(s)", len(app_id_map))
-
-        ids = list(app_id_map.keys())
-        for i in range(0, len(ids), 100):
-            chunk = ids[i:i + 100]
-            try:
-                params = {"key": GG_DEALS_API_KEY, "ids": ",".join(chunk)}
-                async with self._session.get(GG_DEALS_PRICES_URL, params=params,
-                                             timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                    log.debug("GG.deals API response status: %d (chunk %d, %d ids)", resp.status, i, len(chunk))
-                    if resp.status != 200:
-                        continue
-                    data = await resp.json()
-                for app_id, entry in (data.get("data") or {}).items():
-                    if entry and app_id in app_id_map:
-                        prices = entry.get("prices") or {}
-                        hist = prices.get("historicalRetail")
-                        currency = prices.get("currency", "USD")
-                        if hist:
-                            app_id_map[app_id]["original_price"] = f"{hist} {currency}"
-            except Exception:
-                log.exception("Error fetching GG.deals prices (chunk %d)", i)
-
-    async def _send_with_ratelimit(self, channel, embed, content=None):
-        """Send one message at a time with a fixed delay to avoid per-channel 429s."""
-        async with self._send_semaphore:
-            try:
-                await channel.send(content=content, embed=embed)
-            except discord.HTTPException as e:
-                if e.status == 429:
-                    retry_after = getattr(e, "retry_after", 5)
-                    await asyncio.sleep(retry_after)
-                    try:
-                        await channel.send(content=content, embed=embed)
-                    except discord.HTTPException:
-                        log.warning("Failed to send free game notification after retry to %s", channel.id)
-                else:
-                    log.warning("Failed to send free game notification to %s: %s", channel.id, e)
-            finally:
-                await asyncio.sleep(1.5)  # stay well under Discord's 5 msg/5s channel limit
-
-    async def _notify_guilds(self, games: list[dict]):
-        configs = await db.get_all_freestuff_configs()
-        log.debug("Notify: %d guild config(s), %d game(s) to send", len(configs), len(games))
-        tasks = []
-        for cfg in configs:
-            guild_id = cfg["guild_id"]
-            guild = self.bot.get_guild(int(guild_id))
-            if not guild:
-                log.debug("Notify: skipping guild %s -- not found", guild_id)
-                continue
-            channel = guild.get_channel(int(cfg["channel_id"])) if cfg.get("channel_id") else None
-            if not channel:
-                log.debug("Notify: skipping guild %s -- channel not found", guild_id)
-                continue
-
-            allowed_platforms = json.loads(cfg.get("platforms", "[]"))
-            guild_filters = json.loads(cfg.get("content_filters") or
-                '["free_to_keep","free_weekend","other_freebies","gamedev_assets","giveaways_rewards"]')
-
-            sent = 0
-            filtered = 0
-            for game in games:
-                if allowed_platforms and game["platform"] not in allowed_platforms:
-                    log.debug("Notify: guild %s -- filtered %r (platform %s not in %s)", guild_id, game["title"], game["platform"], allowed_platforms)
-                    filtered += 1
-                    continue
-                if game.get("category", "free_to_keep") not in guild_filters:
-                    log.debug("Notify: guild %s -- filtered %r (category %s)", guild_id, game["title"], game.get("category"))
-                    filtered += 1
-                    continue
-                # Source toggles: skip games from disabled sources
-                if not cfg.get("use_epic_api", 1) and game.get("source") == "epic":
-                    log.debug("Notify: guild %s -- filtered %r (epic API disabled)", guild_id, game["title"])
-                    filtered += 1
-                    continue
-                if not cfg.get("use_gamerpower", 1) and game.get("source") == "gamerpower":
-                    log.debug("Notify: guild %s -- filtered %r (gamerpower disabled)", guild_id, game["title"])
-                    filtered += 1
-                    continue
-                if not cfg.get("use_reddit", 0) and game.get("source") == "reddit":
-                    log.debug("Notify: guild %s -- filtered %r (reddit disabled)", guild_id, game["title"])
-                    filtered += 1
-                    continue
-
-                # Choose link URL based on guild setting
-                link_type = cfg.get("link_type", "store")
-                game_url = game["url"]
-                if link_type == "gamerpower" and game.get("source_url"):
-                    game_url = game["source_url"]
-
-                mention_parts = []
-                if cfg.get("mention_role_id"):
-                    mention_parts.append(f"<@&{cfg['mention_role_id']}>")
-                platform_roles = json.loads(cfg.get("platform_mention_roles") or "{}")
-                if game["platform"] in platform_roles:
-                    mention_parts.append(f"<@&{platform_roles[game['platform']]}>")
-                content = " ".join(mention_parts) or None
-
-                embed = build_game_embed(
-                    title=game["title"],
-                    url=game_url,
-                    platform=game["platform"],
-                    image_url=game.get("image_url", ""),
-                    original_price=game.get("original_price", "") if cfg.get("use_gg_deals", 0) else "",
-                    end_date=game.get("end_date", ""),
-                    category=game.get("category", "free_to_keep"),
-                    embed_color=cfg.get("embed_color") or None,
-                    show_price=bool(cfg.get("embed_show_price", 1)),
-                    show_category=bool(cfg.get("embed_show_category", 1)),
-                    show_platform=bool(cfg.get("embed_show_platform", 1)),
-                    show_expiry=bool(cfg.get("embed_show_expiry", 1)),
-                    show_image=bool(cfg.get("embed_show_image", 1)),
-                    description=game.get("description", ""),
-                    show_description=bool(cfg.get("embed_show_description", 1)),
-                    show_client_link=bool(cfg.get("embed_show_client_link", 1)),
-                    store_url=game.get("url", ""),
-                    clean_titles=bool(cfg.get("embed_clean_titles", 0)),
-                )
-                embed.timestamp = datetime.now(timezone.utc)
-
-                tasks.append(self._send_with_ratelimit(channel, embed, content=content))
-                sent += 1
-
-            log.debug("Notify: guild %s -- %d sent, %d filtered", guild_id, sent, filtered)
-
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def setup(bot: commands.Bot):
