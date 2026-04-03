@@ -744,6 +744,7 @@ class FreeStuff(commands.Cog):
                     image_url=image_url, original_price=original_price,
                     source="epic", category=category,
                     description=description,
+                    expires_at=end_date_iso,
                 )
 
                 games.append({
@@ -851,6 +852,7 @@ class FreeStuff(commands.Cog):
             title=title, url=url, platform=platform,
             image_url=thumbnail, original_price=price_original,
             source="freestuffgg", category=category,
+            expires_at=expires_iso,
         )
 
         configs = await db.get_all_freestuff_configs()
@@ -1087,6 +1089,7 @@ class FreeStuff(commands.Cog):
                 # Skip past end_date
                 end_date_str = item.get("end_date") or ""
                 end_date_display = ""
+                gp_expires_iso: str | None = None
                 if end_date_str and end_date_str != "N/A":
                     try:
                         end_dt = datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
@@ -1094,6 +1097,7 @@ class FreeStuff(commands.Cog):
                             log.debug("GamerPower: skipping %r -- expired (%s)", title, end_date_str)
                             continue
                         end_date_display = end_date_str[:10]
+                        gp_expires_iso = end_dt.isoformat()
                     except Exception:
                         pass
 
@@ -1120,6 +1124,7 @@ class FreeStuff(commands.Cog):
                     source="gamerpower", category=category,
                     source_url=gp_page_url, description=description,
                     gp_type=item.get("type"),
+                    expires_at=gp_expires_iso,
                 )
 
                 games.append({
@@ -1156,8 +1161,13 @@ class FreeStuff(commands.Cog):
                 await db.upsert_freestuff_config(cfg["guild_id"], pending_reset=0)
             return 0
 
+        now_iso = datetime.now(timezone.utc).isoformat()
         games = []
         for g in all_games:
+            expires = g.get("expires_at")
+            if expires and expires < now_iso:
+                log.debug("pending_reset: skipping %r — expired (%s)", g.get("title"), expires)
+                continue
             stored_gp_type = g.get("gp_type")
             category = classify_item(g["title"], None, g.get("platform", "other"), False, gp_type=stored_gp_type)
             games.append({

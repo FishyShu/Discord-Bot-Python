@@ -174,7 +174,8 @@ CREATE TABLE IF NOT EXISTS free_games (
     image_url       TEXT,
     original_price  TEXT,
     source          TEXT NOT NULL,
-    discovered_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    discovered_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS twitch_drops_config (
@@ -392,6 +393,7 @@ async def init_db():
             ("source_url",  "TEXT"),
             ("description", "TEXT"),
             ("gp_type",     "TEXT"),
+            ("expires_at",  "TEXT"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE free_games ADD COLUMN {col} {definition}")
@@ -1244,20 +1246,21 @@ async def add_free_game(*, title: str, url: str, platform: str,
                          image_url: Optional[str] = None, original_price: Optional[str] = None,
                          source: str, category: str = "free_to_keep",
                          source_url: Optional[str] = None, description: Optional[str] = None,
-                         gp_type: Optional[str] = None) -> Optional[int]:
+                         gp_type: Optional[str] = None,
+                         expires_at: Optional[str] = None) -> Optional[int]:
     """Insert a free game, returns None if URL already exists. Updates category/gp_type on conflict."""
     async with _connect() as db:
         try:
             cursor = await db.execute(
-                "INSERT INTO free_games (title, url, platform, image_url, original_price, source, category, source_url, description, gp_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (title, url, platform, image_url, original_price, source, category, source_url, description, gp_type),
+                "INSERT INTO free_games (title, url, platform, image_url, original_price, source, category, source_url, description, gp_type, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (title, url, platform, image_url, original_price, source, category, source_url, description, gp_type, expires_at),
             )
             await db.commit()
             return cursor.lastrowid
         except aiosqlite.IntegrityError:
             await db.execute(
-                "UPDATE free_games SET category = ?, gp_type = ? WHERE url = ?",
-                (category, gp_type, url),
+                "UPDATE free_games SET category = ?, gp_type = ?, expires_at = COALESCE(?, expires_at) WHERE url = ?",
+                (category, gp_type, expires_at, url),
             )
             await db.commit()
             return None
