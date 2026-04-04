@@ -188,6 +188,10 @@ _PLATFORM_DOMAIN_MAP: list[tuple[str, str]] = [
     ("nintendo.com", "nintendo"),
 ]
 
+_OFFICIAL_PLATFORMS: set[str] = {
+    "steam", "epic", "gog", "ubisoft", "origin", "humble", "itchio", "xbox", "playstation", "nintendo"
+}
+
 
 def _parse_price_cents(price_str: str) -> int | None:
     """Parse '$19.99' or '19.99 USD' → 1999 cents. Returns None if unparseable."""
@@ -1057,8 +1061,8 @@ class FreeStuff(commands.Cog):
                 return
 
             if cfg.get("gamerpower_official_only", 0):
-                if not _detect_platform_from_url(game["url"]):
-                    log.debug("GamerPower: %r → guild %s — skipped (URL not official store: %s)", game["title"], guild_id, game["url"])
+                if not (_detect_platform_from_url(game["url"]) or game.get("platform") in _OFFICIAL_PLATFORMS):
+                    log.debug("GamerPower: %r → guild %s — skipped (not official store, url=%s platform=%s)", game["title"], guild_id, game["url"], game.get("platform"))
                     return
 
             mention_parts = []
@@ -1308,7 +1312,7 @@ class FreeStuff(commands.Cog):
                     continue
 
                 if cfg.get("gamerpower_official_only", 0) and game.get("source") == "gamerpower":
-                    if not _detect_platform_from_url(game["url"]):
+                    if not (_detect_platform_from_url(game["url"]) or game.get("platform") in _OFFICIAL_PLATFORMS):
                         continue
 
                 norm = _normalize_title(game["title"])
