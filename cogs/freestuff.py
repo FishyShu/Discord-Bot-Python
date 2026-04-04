@@ -219,15 +219,6 @@ async def _steam_search_url(session: aiohttp.ClientSession, title: str) -> str |
         return None
 
 
-def _epic_slug_url(title: str) -> str | None:
-    """Construct an Epic Games Store URL from a game title."""
-    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
-    if not slug:
-        return None
-    log.debug("GamerPower Epic slug: %r → %s", title, slug)
-    return f"https://store.epicgames.com/p/{slug}"
-
-
 async def _resolve_gamerpower_store_url(
     session: aiohttp.ClientSession, title: str, platform: str, fallback_url: str
 ) -> str:
@@ -235,8 +226,6 @@ async def _resolve_gamerpower_store_url(
     clean = _clean_title_noise(title)
     if platform == "steam":
         return await _steam_search_url(session, clean) or fallback_url
-    if platform == "epic":
-        return _epic_slug_url(clean) or fallback_url
     return fallback_url
 
 
