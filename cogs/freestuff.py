@@ -193,23 +193,51 @@ _OFFICIAL_PLATFORMS: set[str] = {
 }
 
 
-async def _resolve_gp_redirect(session: aiohttp.ClientSession, url: str) -> str:
-    """Follow a GamerPower redirect URL and return the final destination URL."""
-    if "gamerpower.com" not in url:
-        return url  # already a direct store URL (e.g. Epic), skip
+async def _steam_search_url(session: aiohttp.ClientSession, title: str) -> str | None:
+    """Search Steam store by title and return store.steampowered.com/app/{id}/ URL."""
     try:
-        async with session.head(
-            url,
-            allow_redirects=True,
+        params = {"term": title, "cc": "US", "l": "en"}
+        async with session.get(
+            "https://store.steampowered.com/api/storesearch/",
+            params=params,
             timeout=aiohttp.ClientTimeout(total=10),
             headers={"User-Agent": "DiscordBot/1.0"},
         ) as resp:
-            resolved = str(resp.url)
-            log.debug("GamerPower redirect: %s → %s", url, resolved)
-            return resolved
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+            items = data.get("items") or []
+            if not items:
+                return None
+            appid = items[0].get("id")
+            if not appid:
+                return None
+            log.debug("GamerPower Steam search: %r → app/%s", title, appid)
+            return f"https://store.steampowered.com/app/{appid}/"
     except Exception as exc:
-        log.debug("GamerPower redirect resolve failed for %s: %s", url, exc)
-        return url
+        log.debug("GamerPower Steam search failed for %r: %s", title, exc)
+        return None
+
+
+def _epic_slug_url(title: str) -> str | None:
+    """Construct an Epic Games Store URL from a game title."""
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    if not slug:
+        return None
+    log.debug("GamerPower Epic slug: %r → %s", title, slug)
+    return f"https://store.epicgames.com/p/{slug}"
+
+
+async def _resolve_gamerpower_store_url(
+    session: aiohttp.ClientSession, title: str, platform: str, fallback_url: str
+) -> str:
+    """Derive a direct store URL for a GamerPower game from its title and platform."""
+    clean = _clean_title_noise(title)
+    if platform == "steam":
+        return await _steam_search_url(session, clean) or fallback_url
+    if platform == "epic":
+        return _epic_slug_url(clean) or fallback_url
+    return fallback_url
 
 
 def _parse_price_cents(price_str: str) -> int | None:
@@ -1158,9 +1186,6 @@ class FreeStuff(commands.Cog):
                 items = await resp.json()
 
             log.debug("GamerPower: %d items returned", len(items))
-
-            # Pass 1: parse items into raw dicts (skip DB insert until URLs are resolved)
-            pending_items = []
             for item in items:
                 # Skip non-game types (articles, news posts, etc.)
                 gp_type_raw = (item.get("type") or "").lower()
@@ -1216,45 +1241,31 @@ class FreeStuff(commands.Cog):
 
                 log.debug("GamerPower: %r -- gp_type=%s, platform=%s, category=%s", title, item.get("type"), platform, category)
 
-                pending_items.append({
-                    "game_id": game_id, "title": title, "gp_url": gp_url,
-                    "gp_page_url": gp_page_url, "platform": platform,
-                    "image_url": image_url, "original_price": original_price,
-                    "end_date_display": end_date_display, "gp_expires_iso": gp_expires_iso,
-                    "category": category, "description": description, "gp_type": item.get("type"),
-                })
+                # Resolve to direct store URL (Steam search API / Epic slug construction)
+                gp_url = await _resolve_gamerpower_store_url(self._session, title, platform, gp_url)
 
-            # Pass 2: resolve all GamerPower redirect URLs concurrently to get real store URLs
-            if pending_items:
-                resolved_urls = await asyncio.gather(
-                    *[_resolve_gp_redirect(self._session, raw["gp_url"]) for raw in pending_items]
-                )
-                for raw, resolved in zip(pending_items, resolved_urls):
-                    raw["gp_url"] = resolved
-
-            # Pass 3: insert into DB and build return list
-            for raw in pending_items:
+                # Insert into free_games history (for dashboard display / reset)
                 await db.add_free_game(
-                    title=raw["title"], url=raw["gp_url"], platform=raw["platform"],
-                    image_url=raw["image_url"], original_price=raw["original_price"],
-                    source="gamerpower", category=raw["category"],
-                    source_url=raw["gp_page_url"], description=raw["description"],
-                    gp_type=raw["gp_type"],
-                    expires_at=raw["gp_expires_iso"],
+                    title=title, url=gp_url, platform=platform,
+                    image_url=image_url, original_price=original_price,
+                    source="gamerpower", category=category,
+                    source_url=gp_page_url, description=description,
+                    gp_type=item.get("type"),
+                    expires_at=gp_expires_iso,
                 )
 
                 games.append({
-                    "game_id":        raw["game_id"],
-                    "title":          raw["title"],
-                    "url":            raw["gp_url"],
-                    "platform":       raw["platform"],
-                    "image_url":      raw["image_url"],
-                    "original_price": raw["original_price"],
-                    "end_date":       raw["end_date_display"],
-                    "category":       raw["category"],
-                    "source":         "gamerpower",
-                    "source_url":     raw["gp_page_url"],
-                    "description":    raw["description"],
+                    "game_id":       game_id,
+                    "title":         title,
+                    "url":           gp_url,
+                    "platform":      platform,
+                    "image_url":     image_url,
+                    "original_price": original_price,
+                    "end_date":      end_date_display,
+                    "category":      category,
+                    "source":        "gamerpower",
+                    "source_url":    gp_page_url,
+                    "description":   description,
                 })
 
         except Exception:
