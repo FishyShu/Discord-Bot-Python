@@ -193,6 +193,25 @@ _OFFICIAL_PLATFORMS: set[str] = {
 }
 
 
+async def _resolve_gp_redirect(session: aiohttp.ClientSession, url: str) -> str:
+    """Follow a GamerPower redirect URL and return the final destination URL."""
+    if "gamerpower.com" not in url:
+        return url  # already a direct store URL (e.g. Epic), skip
+    try:
+        async with session.head(
+            url,
+            allow_redirects=True,
+            timeout=aiohttp.ClientTimeout(total=10),
+            headers={"User-Agent": "DiscordBot/1.0"},
+        ) as resp:
+            resolved = str(resp.url)
+            log.debug("GamerPower redirect: %s → %s", url, resolved)
+            return resolved
+    except Exception as exc:
+        log.debug("GamerPower redirect resolve failed for %s: %s", url, exc)
+        return url
+
+
 def _parse_price_cents(price_str: str) -> int | None:
     """Parse '$19.99' or '19.99 USD' → 1999 cents. Returns None if unparseable."""
     m = re.search(r"[\d.]+", (price_str or "").replace(",", ""))
@@ -1139,6 +1158,9 @@ class FreeStuff(commands.Cog):
                 items = await resp.json()
 
             log.debug("GamerPower: %d items returned", len(items))
+
+            # Pass 1: parse items into raw dicts (skip DB insert until URLs are resolved)
+            pending_items = []
             for item in items:
                 # Skip non-game types (articles, news posts, etc.)
                 gp_type_raw = (item.get("type") or "").lower()
@@ -1194,28 +1216,45 @@ class FreeStuff(commands.Cog):
 
                 log.debug("GamerPower: %r -- gp_type=%s, platform=%s, category=%s", title, item.get("type"), platform, category)
 
-                # Insert into free_games history (for dashboard display / reset)
+                pending_items.append({
+                    "game_id": game_id, "title": title, "gp_url": gp_url,
+                    "gp_page_url": gp_page_url, "platform": platform,
+                    "image_url": image_url, "original_price": original_price,
+                    "end_date_display": end_date_display, "gp_expires_iso": gp_expires_iso,
+                    "category": category, "description": description, "gp_type": item.get("type"),
+                })
+
+            # Pass 2: resolve all GamerPower redirect URLs concurrently to get real store URLs
+            if pending_items:
+                resolved_urls = await asyncio.gather(
+                    *[_resolve_gp_redirect(self._session, raw["gp_url"]) for raw in pending_items]
+                )
+                for raw, resolved in zip(pending_items, resolved_urls):
+                    raw["gp_url"] = resolved
+
+            # Pass 3: insert into DB and build return list
+            for raw in pending_items:
                 await db.add_free_game(
-                    title=title, url=gp_url, platform=platform,
-                    image_url=image_url, original_price=original_price,
-                    source="gamerpower", category=category,
-                    source_url=gp_page_url, description=description,
-                    gp_type=item.get("type"),
-                    expires_at=gp_expires_iso,
+                    title=raw["title"], url=raw["gp_url"], platform=raw["platform"],
+                    image_url=raw["image_url"], original_price=raw["original_price"],
+                    source="gamerpower", category=raw["category"],
+                    source_url=raw["gp_page_url"], description=raw["description"],
+                    gp_type=raw["gp_type"],
+                    expires_at=raw["gp_expires_iso"],
                 )
 
                 games.append({
-                    "game_id":       game_id,
-                    "title":         title,
-                    "url":           gp_url,       # open_giveaway_url → redirects to store
-                    "platform":      platform,
-                    "image_url":     image_url,
-                    "original_price": original_price,
-                    "end_date":      end_date_display,
-                    "category":      category,
-                    "source":        "gamerpower",
-                    "source_url":    gp_page_url,  # giveaway_url → GamerPower detail page
-                    "description":   description,
+                    "game_id":        raw["game_id"],
+                    "title":          raw["title"],
+                    "url":            raw["gp_url"],
+                    "platform":       raw["platform"],
+                    "image_url":      raw["image_url"],
+                    "original_price": raw["original_price"],
+                    "end_date":       raw["end_date_display"],
+                    "category":       raw["category"],
+                    "source":         "gamerpower",
+                    "source_url":     raw["gp_page_url"],
+                    "description":    raw["description"],
                 })
 
         except Exception:
